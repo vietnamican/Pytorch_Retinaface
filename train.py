@@ -5,7 +5,9 @@ import torch.optim as optim
 import torch.backends.cudnn as cudnn
 import argparse
 import torch.utils.data as data
-from data import WiderFaceDetection, detection_collate, preproc, cfg_mnet, cfg_re50
+from tqdm import tqdm
+# from data import WiderFaceDetection, detection_collate, preproc, cfg_mnet, cfg_re50
+from data import LaPa, detection_collate, preproc, cfg_mnet, cfg_re50
 from layers.modules import MultiBoxLoss
 from layers.functions.prior_box import PriorBox
 import time
@@ -14,7 +16,8 @@ import math
 from models.retinaface import RetinaFace
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
-parser.add_argument('--training_dataset', default='./data/widerface/train/label.txt', help='Training dataset directory')
+parser.add_argument('--img_dir', default='./data/train/images', help='Training images directory')
+parser.add_argument('--label_dir', default='./data/train/labels', help='Training labels directory')
 parser.add_argument('--network', default='mobile0.25', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')
@@ -24,6 +27,7 @@ parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
 parser.add_argument('--save_folder', default='./weights/', help='Location to save checkpoint models')
+parser.add_argument('--log_frequent', default=1000, help='Location to save checkpoint models')
 
 args = parser.parse_args()
 
@@ -48,7 +52,8 @@ momentum = args.momentum
 weight_decay = args.weight_decay
 initial_lr = args.lr
 gamma = args.gamma
-training_dataset = args.training_dataset
+img_dir = args.img_dir
+label_dir = args.label_dir
 save_folder = args.save_folder
 
 net = RetinaFace(cfg=cfg)
@@ -71,9 +76,9 @@ if args.resume_net is not None:
     net.load_state_dict(new_state_dict)
 
 if num_gpu > 1 and gpu_train:
-    net = torch.nn.DataParallel(net).cuda()
+    net = torch.nn.DataParallel(net).to('cpu')
 else:
-    net = net.cuda()
+    net = net.to('cpu')
 
 cudnn.benchmark = True
 
@@ -84,14 +89,14 @@ criterion = MultiBoxLoss(num_classes, 0.35, True, 0, True, 7, 0.35, False)
 priorbox = PriorBox(cfg, image_size=(img_dim, img_dim))
 with torch.no_grad():
     priors = priorbox.forward()
-    priors = priors.cuda()
+    priors = priors.to('cpu')
 
 def train():
     net.train()
     epoch = 0 + args.resume_epoch
     print('Loading Dataset...')
 
-    dataset = WiderFaceDetection( training_dataset,preproc(img_dim, rgb_mean))
+    dataset = LaPa(img_dir, label_dir ,preproc(img_dim, rgb_mean), augment=True)
 
     epoch_size = math.ceil(len(dataset) / batch_size)
     max_iter = max_epoch * epoch_size
@@ -103,8 +108,8 @@ def train():
         start_iter = args.resume_epoch * epoch_size
     else:
         start_iter = 0
-
-    for iteration in range(start_iter, max_iter):
+    pbar = tqdm(range(start_iter, max_iter))
+    for iteration in pbar:
         if iteration % epoch_size == 0:
             # create batch iterator
             batch_iterator = iter(data.DataLoader(dataset, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
@@ -119,25 +124,31 @@ def train():
 
         # load train data
         images, targets = next(batch_iterator)
-        images = images.cuda()
-        targets = [anno.cuda() for anno in targets]
+        print(images.shape)
+        images = images.to('cpu')
+        targets = [anno.to('cpu') for anno in targets]
 
         # forward
         out = net(images)
 
         # backprop
         optimizer.zero_grad()
-        loss_l, loss_c, loss_landm = criterion(out, priors, targets)
-        loss = cfg['loc_weight'] * loss_l + loss_c + loss_landm
+        # loss_l, loss_c, loss_landm = criterion(out, priors, targets)
+        loss_l, loss_c= criterion(out, priors, targets)
+        # loss = cfg['loc_weight'] * loss_l + loss_c + loss_landm
+        loss = cfg['loc_weight'] * loss_l + loss_c
         loss.backward()
         optimizer.step()
         load_t1 = time.time()
         batch_time = load_t1 - load_t0
         eta = int(batch_time * (max_iter - iteration))
-        print('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
-              .format(epoch, max_epoch, (iteration % epoch_size) + 1,
-              epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
+        # print('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} Landm: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
+        #       .format(epoch, max_epoch, (iteration % epoch_size) + 1,
+        #       epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), loss_landm.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
 
+        pbar.set_description('Epoch:{}/{} || Epochiter: {}/{} || Iter: {}/{} || Loc: {:.4f} Cla: {:.4f} || LR: {:.8f} || Batchtime: {:.4f} s || ETA: {}'
+              .format(epoch, max_epoch, (iteration % epoch_size) + 1,
+              epoch_size, iteration + 1, max_iter, loss_l.item(), loss_c.item(), lr, batch_time, str(datetime.timedelta(seconds=eta))))
     torch.save(net.state_dict(), save_folder + cfg['name'] + '_Final.pth')
     # torch.save(net.state_dict(), save_folder + 'Final_Retinaface.pth')
 

@@ -14,9 +14,12 @@ import time
 
 parser = argparse.ArgumentParser(description='Retinaface')
 
-parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_Final.pth',
+# parser.add_argument('-m', '--trained_model', default='./weights/Resnet50_Final.pth',
+#                     type=str, help='Trained state_dict file path to open')
+parser.add_argument('-m', '--trained_model', default='./weights_augment/mobilenet0.25_epoch_10.pth',
                     type=str, help='Trained state_dict file path to open')
-parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
+# parser.add_argument('--network', default='resnet50', help='Backbone network mobile0.25 or resnet50')
+parser.add_argument('--network', default='mobile0.25', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 parser.add_argument('--confidence_threshold', default=0.02, type=float, help='confidence_threshold')
 parser.add_argument('--top_k', default=5000, type=int, help='top_k')
@@ -82,9 +85,17 @@ if __name__ == '__main__':
 
     resize = 1
 
+
     # testing begin
-    for i in range(100):
-        image_path = "./curve/test.jpg"
+    # for i in range(100):
+    # image_path = "./curve/test.jpg"
+    image_dir = os.path.join('data', 'val', 'images')
+    out_dir = os.path.join('out_augment', 'val', 'images')
+    if not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
+    for image_file in os.listdir(image_dir):
+        image_name, image_extension = os.path.splitext(image_file)
+        image_path = os.path.join(image_dir, image_file)
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
         img = np.float32(img_raw)
@@ -98,7 +109,8 @@ if __name__ == '__main__':
         scale = scale.to(device)
 
         tic = time.time()
-        loc, conf, landms = net(img)  # forward pass
+        # loc, conf, landms = net(img)  # forward pass
+        loc, conf = net(img)  # forward pass
         print('net forward time: {:.4f}'.format(time.time() - tic))
 
         priorbox = PriorBox(cfg, image_size=(im_height, im_width))
@@ -109,24 +121,24 @@ if __name__ == '__main__':
         boxes = boxes * scale / resize
         boxes = boxes.cpu().numpy()
         scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
-        landms = decode_landm(landms.data.squeeze(0), prior_data, cfg['variance'])
+        # landms = decode_landm(landms.data.squeeze(0), prior_data, cfg['variance'])
         scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-                               img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-                               img.shape[3], img.shape[2]])
+                                img.shape[3], img.shape[2], img.shape[3], img.shape[2],
+                                img.shape[3], img.shape[2]])
         scale1 = scale1.to(device)
-        landms = landms * scale1 / resize
-        landms = landms.cpu().numpy()
+        # landms = landms * scale1 / resize
+        # landms = landms.cpu().numpy()
 
         # ignore low scores
         inds = np.where(scores > args.confidence_threshold)[0]
         boxes = boxes[inds]
-        landms = landms[inds]
+        # landms = landms[inds]
         scores = scores[inds]
 
         # keep top-K before NMS
         order = scores.argsort()[::-1][:args.top_k]
         boxes = boxes[order]
-        landms = landms[order]
+        # landms = landms[order]
         scores = scores[order]
 
         # do NMS
@@ -134,13 +146,14 @@ if __name__ == '__main__':
         keep = py_cpu_nms(dets, args.nms_threshold)
         # keep = nms(dets, args.nms_threshold,force_cpu=args.cpu)
         dets = dets[keep, :]
-        landms = landms[keep]
+        # landms = landms[keep]
 
         # keep top-K faster NMS
         dets = dets[:args.keep_top_k, :]
-        landms = landms[:args.keep_top_k, :]
+        # landms = landms[:args.keep_top_k, :]
 
-        dets = np.concatenate((dets, landms), axis=1)
+        # dets = np.concatenate((dets, landms), axis=1)
+        # dets = np.concatenate((dets), axis=1)
 
         # show image
         if args.save_image:
@@ -156,13 +169,13 @@ if __name__ == '__main__':
                             cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
                 # landms
-                cv2.circle(img_raw, (b[5], b[6]), 1, (0, 0, 255), 4)
-                cv2.circle(img_raw, (b[7], b[8]), 1, (0, 255, 255), 4)
-                cv2.circle(img_raw, (b[9], b[10]), 1, (255, 0, 255), 4)
-                cv2.circle(img_raw, (b[11], b[12]), 1, (0, 255, 0), 4)
-                cv2.circle(img_raw, (b[13], b[14]), 1, (255, 0, 0), 4)
+                # cv2.circle(img_raw, (b[5], b[6]), 1, (0, 0, 255), 4)
+                # cv2.circle(img_raw, (b[7], b[8]), 1, (0, 255, 255), 4)
+                # cv2.circle(img_raw, (b[9], b[10]), 1, (255, 0, 255), 4)
+                # cv2.circle(img_raw, (b[11], b[12]), 1, (0, 255, 0), 4)
+                # cv2.circle(img_raw, (b[13], b[14]), 1, (255, 0, 0), 4)
             # save image
-
-            name = "test.jpg"
+            name = os.path.join(out_dir, image_file)
+            # name = "test.jpg"
             cv2.imwrite(name, img_raw)
 

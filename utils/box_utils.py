@@ -93,7 +93,8 @@ def matrix_iof(a, b):
     return area_i / np.maximum(area_a[:, np.newaxis], 1)
 
 
-def match(threshold, truths, priors, variances, labels, landms, loc_t, conf_t, landm_t, idx):
+# def match(threshold, truths, priors, variances, labels, landms, loc_t, conf_t, landm_t, idx):
+def match(threshold, truths, priors, variances, labels, loc_t, conf_t, landm_t, idx):
     """Match each prior box with the ground truth box of the highest jaccard
     overlap, encode the bounding boxes, then return the matched indices
     corresponding to both confidence and location preds.
@@ -146,11 +147,11 @@ def match(threshold, truths, priors, variances, labels, landms, loc_t, conf_t, l
     conf[best_truth_overlap < threshold] = 0    # label as background   overlap<0.35的全部作为负样本
     loc = encode(matches, priors, variances)
 
-    matches_landm = landms[best_truth_idx]
-    landm = encode_landm(matches_landm, priors, variances)
+    # matches_landm = landms[best_truth_idx]
+    # landm = encode_landm(matches_landm, priors, variances)
     loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn
     conf_t[idx] = conf  # [num_priors] top class label for each prior
-    landm_t[idx] = landm
+    # landm_t[idx] = landm
 
 
 def encode(matched, priors, variances):

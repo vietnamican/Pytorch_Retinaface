@@ -1,0 +1,6 @@
+data*/
+out*/
+weights*/
+*.pth/
+.vscode/
+__pycache__/
