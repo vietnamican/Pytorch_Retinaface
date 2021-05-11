@@ -1,6 +1,6 @@
-data*/
 out*/
 weights*/
 *.pth/
 .vscode/
 __pycache__/
+*.zip
