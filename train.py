@@ -56,6 +56,10 @@ img_dir = args.img_dir
 label_dir = args.label_dir
 save_folder = args.save_folder
 
+ir_img_dirs = [os.path.join('data', 'ir_raw', 'images', 'out2'), os.path.join('data', 'ir_raw', 'images', 'out22'), os.path.join('data', 'ir_raw', 'images', 'out222')]
+ir_label_dirs = [os.path.join('data', 'ir_raw', 'labels', 'out2'), os.path.join('data', 'ir_raw', 'labels', 'out22'), os.path.join('data', 'ir_raw', 'labels', 'out222')]
+
+
 net = RetinaFace(cfg=cfg)
 print("Printing net...")
 print(net)
@@ -96,9 +100,10 @@ def train():
     epoch = 0 + args.resume_epoch
     print('Loading Dataset...')
 
-    dataset = LaPa(img_dir, label_dir ,preproc(img_dim, rgb_mean), augment=True)
+    dataset_lapa = LaPa(img_dir, label_dir, preproc(img_dim, rgb_mean), augment=True)
+    dataset_ir = LaPa(ir_img_dirs, ir_label_dirs, preproc(img_dim, rgb_mean), augment=True)
 
-    epoch_size = math.ceil(len(dataset) / batch_size)
+    epoch_size = math.ceil((len(dataset_lapa)+len(dataset_ir))/ batch_size)
     max_iter = max_epoch * epoch_size
 
     stepvalues = (cfg['decay1'] * epoch_size, cfg['decay2'] * epoch_size)
@@ -112,7 +117,8 @@ def train():
     for iteration in pbar:
         if iteration % epoch_size == 0:
             # create batch iterator
-            batch_iterator = iter(data.DataLoader(dataset, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
+            batch_iterator_lapa = iter(data.DataLoader(dataset_lapa, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
+            batch_iterator_ir = iter(data.DataLoader(dataset_ir, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
             if (epoch % 10 == 0 and epoch > 0) or (epoch % 5 == 0 and epoch > cfg['decay1']):
                 torch.save(net.state_dict(), save_folder + cfg['name']+ '_epoch_' + str(epoch) + '.pth')
             epoch += 1
@@ -123,8 +129,10 @@ def train():
         lr = adjust_learning_rate(optimizer, gamma, epoch, step_index, iteration, epoch_size)
 
         # load train data
-        images, targets = next(batch_iterator)
-        print(images.shape)
+        if iteration % 2 == 0:
+            images, targets = next(batch_iterator_lapa)
+        else:
+            images, targets = next(batch_iterator_ir)
         images = images.to('cpu')
         targets = [anno.to('cpu') for anno in targets]
 

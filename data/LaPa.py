@@ -27,13 +27,13 @@ def augment(img, boxes):
 # lmks = np.array(transformed["keypoints"])
 
 class LaPa(data.Dataset):
-    def __init__(self, img_dir, label_dir, preproc=None, augment=False):
+    def __init__(self, img_dirs, label_dirs, preproc=None, augment=False):
         self.preproc = preproc
         self.augment = augment
         self.img_paths = []
         self.labels = []
-        self.img_dir = img_dir
-        self.label_dir = label_dir
+        self.img_dirs = img_dirs
+        self.label_dirs = label_dirs
         self.__parse_file()
 
     def __len__(self):
@@ -78,15 +78,28 @@ class LaPa(data.Dataset):
     
     def __parse_file(self):
         label_extension = 'txt'
-        for img_file in os.listdir(self.img_dir):
-            img_name, img_extension = os.path.splitext(img_file)
-            self.img_paths.append(os.path.join(self.img_dir, img_file))
-            label_file_path = os.path.join(self.label_dir, img_name + "." + label_extension)
-            with open(label_file_path, 'r') as f:
-                content = f.read().split('\n')[0:1]
-                label = np.loadtxt(content)
-                label = label[1:]
-                self.labels.append(label)
+        if isinstance(self.img_dirs, str):
+            for img_file in os.listdir(self.img_dirs):
+                img_name, img_extension = os.path.splitext(img_file)
+                self.img_paths.append(os.path.join(self.img_dirs, img_file))
+                label_file_path = os.path.join(self.label_dirs, img_name + "." + label_extension)
+                with open(label_file_path, 'r') as f:
+                    content = f.read().split('\n')[0:1]
+                    label = np.loadtxt(content)
+                    label = label[1:]
+                    self.labels.append(label)
+        else:
+            for img_dir, label_dir in zip(self.img_dirs, self.label_dirs):
+                for img_file in os.listdir(img_dir):
+                    img_name, img_extension = os.path.splitext(img_file)
+                    self.img_paths.append(os.path.join(img_dir, img_file))
+                    label_file_path = os.path.join(label_dir, img_name + '.' + label_extension)
+                    with open(label_file_path, 'r') as f:
+                        content = f.read().split('\n')[0:1]
+                        label = np.loadtxt(content)
+                        label = label[1:]
+                        self.labels.append(label)
+
 
 
 def detection_collate(batch):
