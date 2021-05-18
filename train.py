@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser(description='Retinaface Training')
 parser.add_argument('--img_dir', default='./data/train/images', help='Training images directory')
 parser.add_argument('--label_dir', default='./data/train/labels', help='Training labels directory')
 parser.add_argument('--network', default='mobile0.25', help='Backbone network mobile0.25 or resnet50')
-parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
+parser.add_argument('--num_workers', default=1, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--resume_net', default=None, help='resume net for retraining')
@@ -28,6 +28,7 @@ parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight dec
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
 parser.add_argument('--save_folder', default='./weights/', help='Location to save checkpoint models')
 parser.add_argument('--log_frequent', default=1000, help='Location to save checkpoint models')
+parser.add_argument('--all', default=False, help='Train on both dataset or not')
 
 args = parser.parse_args()
 
@@ -56,8 +57,10 @@ img_dir = args.img_dir
 label_dir = args.label_dir
 save_folder = args.save_folder
 
-ir_img_dirs = [os.path.join('data', 'ir_raw', 'images', 'out2'), os.path.join('data', 'ir_raw', 'images', 'out22'), os.path.join('data', 'ir_raw', 'images', 'out222')]
-ir_label_dirs = [os.path.join('data', 'ir_raw', 'labels', 'out2'), os.path.join('data', 'ir_raw', 'labels', 'out22'), os.path.join('data', 'ir_raw', 'labels', 'out222')]
+all_img_dirs = [img_dir, os.path.join('data', 'ir_cleaned', 'images', 'out2'), os.path.join('data', 'ir_cleaned', 'images', 'out22'), os.path.join('data', 'ir_cleaned', 'images', 'out222')]
+# all_img_dirs = all_img_dirs.append(img_dir)
+all_label_dirs = [label_dir, os.path.join('data', 'ir_cleaned', 'labels', 'out2'), os.path.join('data', 'ir_cleaned', 'labels', 'out22'), os.path.join('data', 'ir_cleaned', 'labels', 'out222')]
+# all_img_dirs = all_label_dirs.append(label_dir)
 
 
 net = RetinaFace(cfg=cfg)
@@ -95,15 +98,19 @@ with torch.no_grad():
     priors = priorbox.forward()
     priors = priors.to('cpu')
 
+def load_dataset(args):
+    if args.all:
+        return LaPa(all_img_dirs, all_label_dirs, preproc(img_dim, rgb_mean), augment=True, preload=False)
+    else:
+        return LaPa(img_dir, label_dir, preproc(img_dim, rgb_mean), augment=True, preload=False)
+
 def train():
     net.train()
     epoch = 0 + args.resume_epoch
     print('Loading Dataset...')
 
-    dataset_lapa = LaPa(img_dir, label_dir, preproc(img_dim, rgb_mean), augment=True)
-    dataset_ir = LaPa(ir_img_dirs, ir_label_dirs, preproc(img_dim, rgb_mean), augment=True)
-
-    epoch_size = math.ceil((len(dataset_lapa)+len(dataset_ir))/ batch_size)
+    dataset = load_dataset(args)
+    epoch_size = math.ceil(len(dataset)/batch_size)
     max_iter = max_epoch * epoch_size
 
     stepvalues = (cfg['decay1'] * epoch_size, cfg['decay2'] * epoch_size)
@@ -117,8 +124,7 @@ def train():
     for iteration in pbar:
         if iteration % epoch_size == 0:
             # create batch iterator
-            batch_iterator_lapa = iter(data.DataLoader(dataset_lapa, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
-            batch_iterator_ir = iter(data.DataLoader(dataset_ir, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
+            batch_iterator = iter(data.DataLoader(dataset, batch_size, shuffle=True, num_workers=num_workers, collate_fn=detection_collate))
             if (epoch % 10 == 0 and epoch > 0) or (epoch % 5 == 0 and epoch > cfg['decay1']):
                 torch.save(net.state_dict(), save_folder + cfg['name']+ '_epoch_' + str(epoch) + '.pth')
             epoch += 1
@@ -129,10 +135,7 @@ def train():
         lr = adjust_learning_rate(optimizer, gamma, epoch, step_index, iteration, epoch_size)
 
         # load train data
-        if iteration % 2 == 0:
-            images, targets = next(batch_iterator_lapa)
-        else:
-            images, targets = next(batch_iterator_ir)
+        images, targets = next(batch_iterator)
         images = images.to('cpu')
         targets = [anno.to('cpu') for anno in targets]
 

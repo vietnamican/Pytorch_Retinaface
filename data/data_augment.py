@@ -6,7 +6,7 @@ from utils.box_utils import matrix_iof
 
 # def _crop(image, boxes, labels, landm, img_dim):
 def _crop(image, boxes, labels, img_dim):
-    height, width, _ = image.shape
+    height, width = image.shape[:2]
     pad_image_flag = True
 
     for _ in range(250):

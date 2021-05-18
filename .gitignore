@@ -4,3 +4,15 @@ weights*/
 .vscode/
 __pycache__/
 *.zip
+WIDER*/
+*.jpg
+data/data_raw/
+data/ir_cleaned/
+data/sampleeyestatelabel/
+data/test/
+data/train/
+data/val/
+eval/
+landmark_models/
+retinaface_gt_v1.1/
+torchalign/

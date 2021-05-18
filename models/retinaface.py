@@ -79,8 +79,8 @@ class RetinaFace(nn.Module):
         out_channels = cfg['out_channel']
         self.fpn = FPN(in_channels_list,out_channels)
         self.ssh1 = SSH(out_channels, out_channels)
-        self.ssh2 = SSH(out_channels, out_channels)
-        self.ssh3 = SSH(out_channels, out_channels)
+        # self.ssh2 = SSH(out_channels, out_channels)
+        # self.ssh3 = SSH(out_channels, out_channels)
 
         self.ClassHead = self._make_class_head(fpn_num=3, inchannels=cfg['out_channel'])
         self.BboxHead = self._make_bbox_head(fpn_num=3, inchannels=cfg['out_channel'])
@@ -112,9 +112,9 @@ class RetinaFace(nn.Module):
 
         # SSH
         feature1 = self.ssh1(fpn[0])
-        feature2 = self.ssh2(fpn[1])
-        feature3 = self.ssh3(fpn[2])
-        features = [feature1, feature2, feature3]
+        # feature2 = self.ssh2(fpn[1])
+        # feature3 = self.ssh3(fpn[2])
+        features = [feature1]
 
         bbox_regressions = torch.cat([self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1)
         classifications = torch.cat([self.ClassHead[i](feature) for i, feature in enumerate(features)],dim=1)

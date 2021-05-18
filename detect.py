@@ -89,7 +89,7 @@ if __name__ == '__main__':
     # testing begin
     # for i in range(100):
     # image_path = "./curve/test.jpg"
-    image_dir = os.path.join('data', 'val', 'images')
+    image_dir = os.path.join('data', 'data_raw', 'val', 'images')
     out_dir = os.path.join('out_augment', 'val', 'images')
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
