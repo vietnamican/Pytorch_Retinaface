@@ -72,11 +72,11 @@ class MultiBoxLoss(nn.Module):
             # match(self.threshold, truths, defaults, self.variance, labels, landms, loc_t, conf_t, landm_t, idx)
             match(self.threshold, truths, defaults, self.variance, labels, loc_t, conf_t, landm_t, idx)
         if GPU:
-            loc_t = loc_t.to('cpu')
-            conf_t = conf_t.to('cpu')
-            landm_t = landm_t.to('cpu')
+            loc_t = loc_t.to('cuda')
+            conf_t = conf_t.to('cuda')
+            landm_t = landm_t.to('cuda')
 
-        zeros = torch.tensor(0).to('cpu')
+        zeros = torch.tensor(0).to('cuda')
         # landm Loss (Smooth L1)
         # Shape: [batch,num_priors,10]
         pos1 = conf_t > zeros

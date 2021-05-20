@@ -16,3 +16,6 @@ eval/
 landmark_models/
 retinaface_gt_v1.1/
 torchalign/
+dataset/
+record.mp4
+checkpoint*

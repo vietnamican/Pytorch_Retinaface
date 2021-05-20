@@ -16,18 +16,18 @@ import math
 from models.retinaface import RetinaFace
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
-parser.add_argument('--img_dir', default='./data/train/images', help='Training images directory')
-parser.add_argument('--label_dir', default='./data/train/labels', help='Training labels directory')
+parser.add_argument('--img_dir', default='../LaPa_negpos_fusion/train/images', help='Training images directory')
+parser.add_argument('--label_dir', default='../LaPa_negpos_fusion/train/labels', help='Training labels directory')
 parser.add_argument('--network', default='mobile0.25', help='Backbone network mobile0.25 or resnet50')
-parser.add_argument('--num_workers', default=1, type=int, help='Number of workers used in dataloading')
+parser.add_argument('--batch_size', default=128, help='Batch size for training')
+parser.add_argument('--num_workers', default=6, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--resume_net', default=None, help='resume net for retraining')
 parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='./weights/', help='Location to save checkpoint models')
-parser.add_argument('--log_frequent', default=1000, help='Location to save checkpoint models')
+parser.add_argument('--save_folder', default='./weights_negpos/', help='Location to save checkpoint models')
 parser.add_argument('--all', default=False, help='Train on both dataset or not')
 
 args = parser.parse_args()
@@ -44,10 +44,10 @@ rgb_mean = (104, 117, 123) # bgr order
 num_classes = 2
 img_dim = cfg['image_size']
 num_gpu = cfg['ngpu']
-batch_size = cfg['batch_size']
 max_epoch = cfg['epoch']
 gpu_train = cfg['gpu_train']
 
+batch_size = args.batch_size
 num_workers = args.num_workers
 momentum = args.momentum
 weight_decay = args.weight_decay
@@ -57,9 +57,9 @@ img_dir = args.img_dir
 label_dir = args.label_dir
 save_folder = args.save_folder
 
-all_img_dirs = [img_dir, os.path.join('data', 'ir_cleaned', 'images', 'out2'), os.path.join('data', 'ir_cleaned', 'images', 'out22'), os.path.join('data', 'ir_cleaned', 'images', 'out222')]
+# all_img_dirs = [img_dir, os.path.join('data', 'ir_cleaned', 'images', 'out2'), os.path.join('data', 'ir_cleaned', 'images', 'out22'), os.path.join('data', 'ir_cleaned', 'images', 'out222')]
 # all_img_dirs = all_img_dirs.append(img_dir)
-all_label_dirs = [label_dir, os.path.join('data', 'ir_cleaned', 'labels', 'out2'), os.path.join('data', 'ir_cleaned', 'labels', 'out22'), os.path.join('data', 'ir_cleaned', 'labels', 'out222')]
+# all_label_dirs = [label_dir, os.path.join('data', 'ir_cleaned', 'labels', 'out2'), os.path.join('data', 'ir_cleaned', 'labels', 'out22'), os.path.join('data', 'ir_cleaned', 'labels', 'out222')]
 # all_img_dirs = all_label_dirs.append(label_dir)
 
 
@@ -83,9 +83,9 @@ if args.resume_net is not None:
     net.load_state_dict(new_state_dict)
 
 if num_gpu > 1 and gpu_train:
-    net = torch.nn.DataParallel(net).to('cpu')
+    net = torch.nn.DataParallel(net).to('cuda')
 else:
-    net = net.to('cpu')
+    net = net.to('cuda')
 
 cudnn.benchmark = True
 
@@ -96,13 +96,13 @@ criterion = MultiBoxLoss(num_classes, 0.35, True, 0, True, 7, 0.35, False)
 priorbox = PriorBox(cfg, image_size=(img_dim, img_dim))
 with torch.no_grad():
     priors = priorbox.forward()
-    priors = priors.to('cpu')
+    priors = priors.to('cuda')
 
 def load_dataset(args):
     if args.all:
-        return LaPa(all_img_dirs, all_label_dirs, preproc(img_dim, rgb_mean), augment=True, preload=False)
+        return LaPa(all_img_dirs, all_label_dirs, augment=True, preload=True)
     else:
-        return LaPa(img_dir, label_dir, preproc(img_dim, rgb_mean), augment=True, preload=False)
+        return LaPa(img_dir, label_dir, augment=True, preload=True)
 
 def train():
     net.train()
@@ -136,8 +136,9 @@ def train():
 
         # load train data
         images, targets = next(batch_iterator)
-        images = images.to('cpu')
-        targets = [anno.to('cpu') for anno in targets]
+        # print(images.shape)
+        images = images.to('cuda')
+        targets = [anno.to('cuda') for anno in targets]
 
         # forward
         out = net(images)
@@ -145,7 +146,7 @@ def train():
         # backprop
         optimizer.zero_grad()
         # loss_l, loss_c, loss_landm = criterion(out, priors, targets)
-        loss_l, loss_c= criterion(out, priors, targets)
+        loss_l, loss_c = criterion(out, priors, targets)
         # loss = cfg['loc_weight'] * loss_l + loss_c + loss_landm
         loss = cfg['loc_weight'] * loss_l + loss_c
         loss.backward()

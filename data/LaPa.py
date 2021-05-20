@@ -5,35 +5,47 @@ import torch.utils.data as data
 import cv2
 import numpy as np
 import albumentations as A
+import albumentations.pytorch as AP
 from tqdm import tqdm
 # Declare an augmentation pipeline
 # category_ids = [0]
 transformerr = A.Compose(
     [
-        A.RandomSizedBBoxSafeCrop(width=448, height=336, erosion_rate=0.2),
+        # A.RandomSizedBBoxSafeCrop(width=448, height=336, erosion_rate=0.2),
         A.HorizontalFlip(p=0.5),  ## Becareful when using that, because the keypoint is flipped but the index is flipped too
         A.ColorJitter (brightness=0.35, contrast=0.5, saturation=0.5, hue=0.2, always_apply=False, p=0.7),
-        A.ShiftScaleRotate (shift_limit=0.0625, scale_limit=0.25, rotate_limit=30, interpolation=1, border_mode=4, always_apply=False, p=1)
-       
+        A.ShiftScaleRotate (shift_limit=0.0625, scale_limit=0.25, rotate_limit=30, interpolation=1, border_mode=4, always_apply=False, p=1),
+        A.Normalize(),
+        AP.ToTensorV2()
     ],
     bbox_params=A.BboxParams(format='pascal_voc')
 )
 
-def augment(img, boxes):
+def augment(img, boxes=[[0,0,1,1,1]]):
     out = transformerr(image=img, bboxes=boxes)
     return out['image'], out['bboxes']
 
+def is_valid_annotation(annotations, height, width):
+    left = annotations[:, 0]
+    top = annotations[:, 1]
+    right = annotations[:, 2]
+    bottom = annotations[:, 3]
+
+    if np.any(left<0) or np.any(top<0) or any(right>width-1) or any(bottom>height-1) or any(left>=right) or any(top>=bottom):
+        return False
+    return True
+
 class LaPa(data.Dataset):
-    def __init__(self, img_dirs, label_dirs, preproc=None, augment=False, preload=False):
-        self.preproc = preproc
+    def __init__(self, img_dirs, label_dirs, augment=False, preload=False):
         self.augment = augment
         self.preload = preload
         self.img_paths = []
         self.imgs = []
         self.labels = []
+        self.negpos = []
         self.img_dirs = img_dirs
         self.label_dirs = label_dirs
-        print(self.img_dirs)
+        # print(self.img_dirs)
         self.__parse_file()
 
     def __len__(self):
@@ -47,28 +59,44 @@ class LaPa(data.Dataset):
             img = self.imgs[index]
         else:
             img = cv2.imread(self.img_paths[index])
-
+        
+        height, width = img.shape[:2]
         label = self.labels[index]
         annotations = np.zeros((0, 5))
         annotation = np.zeros((1, 5))
-        # bbox
-        annotation[0, 0] = label[0]  # x1
-        annotation[0, 1] = label[1]  # y1
-        annotation[0, 2] = label[0] + label[2]  # x2
-        annotation[0, 3] = label[1] + label[3]  # y2
-        annotation[0, 4] = -1
-        annotations = np.append(annotations, annotation, axis=0)
-        target = np.array(annotations)
-        if self.augment:
-            try:
-                img, bboxes = augment(img, target[:, (0,1,2,3,4)])
+        if self.negpos[index] == 0:
+            # print('negative')
+            annotation[0, 0] = 0
+            annotation[0, 1] = 0
+            annotation[0, 2] = 0
+            annotation[0, 3] = 0
+            annotation[0, 4] = 0
+            annotations = np.append(annotations, annotation, axis=0)
+            target = np.array(annotations)
+
+            if self.augment:
+                img, bboxes = augment(img)
+        else:
+            annotation[0, 0] = label[0]  # x1
+            annotation[0, 1] = label[1]  # y1
+            annotation[0, 2] = label[0] + label[2]  # x2
+            annotation[0, 3] = label[1] + label[3]  # y2
+            annotation[0, 4] = -1
+            if not is_valid_annotation(annotation, height, width):
+                # print(annotation)
+                return None, None
+            annotations = np.append(annotations, annotation, axis=0)
+            target = np.array(annotations)
+            # print(target)
+            if self.augment:
+                img, bboxes = augment(img, target)
                 bboxes = np.array(bboxes)
-                target[:, (0,1,2,3)] = bboxes[:, (0,1,2,3)]
-            except:
-                pass
-        if self.preproc is not None:
-            img, target = self.preproc(img, target)
-        return torch.from_numpy(img), target
+                target[:, :4] = bboxes[:, :4]
+                # print(target.shape, target)
+
+            target[:, (0,2)] /= width
+            target[:, (1,3)] /= height
+        return img, torch.FloatTensor(target)
     
     def __parse_file(self):
         label_extension = 'txt'
@@ -77,8 +105,12 @@ class LaPa(data.Dataset):
                 img_name, img_extension = os.path.splitext(img_file)
                 if self.preload:
                     self.imgs.append(cv2.imread(os.path.join(self.img_dirs, img_file), cv2.IMREAD_COLOR))
+                self.img_paths.append(os.path.join(self.img_dirs, img_file))
+                if 'negative' in img_file:
+                    # print(img_file)
+                    self.negpos.append(0)
                 else:
-                    self.img_paths.append(os.path.join(self.img_dirs, img_file))
+                    self.negpos.append(1)
                 label_file_path = os.path.join(self.label_dirs, img_name + "." + label_extension)
                 with open(label_file_path, 'r') as f:
                     content = f.read().split('\n')[0:1]
@@ -91,8 +123,11 @@ class LaPa(data.Dataset):
                     img_name, img_extension = os.path.splitext(img_file)
                     if self.preload:
                         self.imgs.append(cv2.imread(os.path.join(img_dir, img_file), cv2.IMREAD_COLOR))
+                    self.img_paths.append(os.path.join(img_dir, img_file))
+                    if 'negative' in img_file:
+                        self.negpos.append(0)
                     else:
-                        self.img_paths.append(os.path.join(img_dir, img_file))
+                        self.negpos.append(1)
                     label_file_path = os.path.join(label_dir, img_name + '.' + label_extension)
                     with open(label_file_path, 'r') as f:
                         content = f.read().split('\n')[0:1]
@@ -117,12 +152,14 @@ def detection_collate(batch):
     targets = []
     imgs = []
     for _, sample in enumerate(batch):
-        for _, tup in enumerate(sample):
-            if torch.is_tensor(tup):
-                imgs.append(tup)
-            elif isinstance(tup, type(np.empty(0))):
-                annos = torch.from_numpy(tup).float()
-                targets.append(annos)
+        image, target = sample
+        if image is not None:
+            imgs.append(image)
+            targets.append(target)
+
+                # elif isinstance(tup, type(np.empty(0))):
+                #     annos = torch.from_numpy(tup).float()
+                #     targets.append(annos)
 
     return (torch.stack(imgs, 0), targets)
 
