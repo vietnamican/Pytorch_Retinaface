@@ -13,11 +13,11 @@ from layers.functions.prior_box import PriorBox
 import time
 import datetime
 import math
-from models.retinaface import RetinaFace
+# from models import RetinaFace
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
-parser.add_argument('--img_dir', default='../LaPa_negpos_fusion/train/images', help='Training images directory')
-parser.add_argument('--label_dir', default='../LaPa_negpos_fusion/train/labels', help='Training labels directory')
+parser.add_argument('--img_dir', default='dataset/LaPa_negpos_fusion_cleaned/train/images', help='Training images directory')
+parser.add_argument('--label_dir', default='dataset/LaPa_negpos_fusion_cleaned/train/labels', help='Training labels directory')
 parser.add_argument('--network', default='mobile0.25', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--batch_size', default=128, help='Batch size for training')
 parser.add_argument('--num_workers', default=6, type=int, help='Number of workers used in dataloading')
@@ -27,7 +27,7 @@ parser.add_argument('--resume_net', default=None, help='resume net for retrainin
 parser.add_argument('--resume_epoch', default=0, type=int, help='resume iter for retraining')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='./weights_negpos/', help='Location to save checkpoint models')
+parser.add_argument('--save_folder', default='./weights_negpos_cleaned/', help='Location to save checkpoint models')
 parser.add_argument('--all', default=False, help='Train on both dataset or not')
 
 args = parser.parse_args()
