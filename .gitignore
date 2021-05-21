@@ -19,3 +19,4 @@ torchalign/
 dataset/
 record.mp4
 checkpoint*
+logs/

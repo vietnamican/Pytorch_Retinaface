@@ -7,22 +7,29 @@ import numpy as np
 import albumentations as A
 import albumentations.pytorch as AP
 from tqdm import tqdm
+from functools import partial
 # Declare an augmentation pipeline
 # category_ids = [0]
-transformerr = A.Compose(
+transformerr = {
+    'train': A.Compose(
     [
-        # A.RandomSizedBBoxSafeCrop(width=448, height=336, erosion_rate=0.2),
         A.HorizontalFlip(p=0.5),  ## Becareful when using that, because the keypoint is flipped but the index is flipped too
         A.ColorJitter (brightness=0.35, contrast=0.5, saturation=0.5, hue=0.2, always_apply=False, p=0.7),
         A.ShiftScaleRotate (shift_limit=0.0625, scale_limit=0.25, rotate_limit=30, interpolation=1, border_mode=4, always_apply=False, p=1),
         A.Normalize(),
         AP.ToTensorV2()
     ],
-    bbox_params=A.BboxParams(format='pascal_voc')
-)
+    bbox_params=A.BboxParams(format='pascal_voc')),
+    'val': A.Compose(
+    [
+        A.Normalize(),
+        AP.ToTensorV2()
+    ],
+    bbox_params=A.BboxParams(format='pascal_voc'))
+}
 
-def augment(img, boxes=[[0,0,1,1,1]]):
-    out = transformerr(image=img, bboxes=boxes)
+def _augment(transformer, img, boxes=[[0,0,1,1,1]]):
+    out = transformer(image=img, bboxes=boxes)
     return out['image'], out['bboxes']
 
 def is_valid_annotation(annotations, height, width):
@@ -36,7 +43,7 @@ def is_valid_annotation(annotations, height, width):
     return True
 
 class LaPa(data.Dataset):
-    def __init__(self, img_dirs, label_dirs, augment=False, preload=False):
+    def __init__(self, img_dirs, label_dirs, set_type='train', augment=False, preload=False):
         self.augment = augment
         self.preload = preload
         self.img_paths = []
@@ -45,6 +52,7 @@ class LaPa(data.Dataset):
         self.negpos = []
         self.img_dirs = img_dirs
         self.label_dirs = label_dirs
+        self.augment_function = partial(_augment, transformerr[set_type])
         # print(self.img_dirs)
         self.__parse_file()
 
@@ -75,7 +83,7 @@ class LaPa(data.Dataset):
             target = np.array(annotations)
 
             if self.augment:
-                img, bboxes = augment(img)
+                img, _ = self.augment_function(img)
         else:
             annotation[0, 0] = label[0]  # x1
             annotation[0, 1] = label[1]  # y1
@@ -89,7 +97,7 @@ class LaPa(data.Dataset):
             target = np.array(annotations)
             # print(target)
             if self.augment:
-                img, bboxes = augment(img, target)
+                img, bboxes = self.augment_function(img, target)
                 bboxes = np.array(bboxes)
                 target[:, :4] = bboxes[:, :4]
                 # print(target.shape, target)

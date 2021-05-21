@@ -70,8 +70,8 @@ class RetinaFace(Base):
         self.fpn = FPN(in_channels_list,out_channels)
         self.ssh1 = SSH(out_channels, out_channels)
 
-        self.ClassHead = self._make_class_head(fpn_num=3, inchannels=cfg['out_channel'])
-        self.BboxHead = self._make_bbox_head(fpn_num=3, inchannels=cfg['out_channel'])
+        self.ClassHead = self._make_class_head(fpn_num=1, inchannels=cfg['out_channel'])
+        self.BboxHead = self._make_bbox_head(fpn_num=1, inchannels=cfg['out_channel'])
 
     def _make_class_head(self,fpn_num=3,inchannels=64,anchor_num=2):
         classhead = nn.ModuleList()
@@ -105,7 +105,3 @@ class RetinaFace(Base):
         return output
 
 
-class Model(Base):
-    def __init__(self, cfg = None, phase = 'train'):
-        self.model = RetinaFace(cfg, phase)
-        self.criterion = ...

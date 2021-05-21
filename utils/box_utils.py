@@ -137,14 +137,18 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, landm_t, 
     best_prior_idx.squeeze_(1)
     best_prior_idx_filter.squeeze_(1)
     best_prior_overlap.squeeze_(1)
-    best_truth_overlap.index_fill_(0, best_prior_idx_filter, 2)  # ensure best prior
+    best_truth_overlap.index_fill_(
+        0, best_prior_idx_filter, 2)  # ensure best prior
     # TODO refactor: index  best_prior_idx with long tensor
     # ensure every gt matches with its prior of max overlap
     for j in range(best_prior_idx.size(0)):     # 判别此anchor是预测哪一个boxes
         best_truth_idx[best_prior_idx[j]] = j
-    matches = truths[best_truth_idx]            # Shape: [num_priors,4] 此处为每一个anchor对应的bbox取出来
-    conf = labels[best_truth_idx]               # Shape: [num_priors]      此处为每一个anchor对应的label取出来
-    conf[best_truth_overlap < threshold] = 0    # label as background   overlap<0.35的全部作为负样本
+    # Shape: [num_priors,4] 此处为每一个anchor对应的bbox取出来
+    matches = truths[best_truth_idx]
+    # Shape: [num_priors]      此处为每一个anchor对应的label取出来
+    conf = labels[best_truth_idx]
+    # label as background   overlap<0.35的全部作为负样本
+    conf[best_truth_overlap < threshold] = 0
     loc = encode(matches, priors, variances)
 
     # matches_landm = landms[best_truth_idx]
@@ -177,6 +181,7 @@ def encode(matched, priors, variances):
     # return target for smooth_l1_loss
     return torch.cat([g_cxcy, g_wh], 1)  # [num_priors,4]
 
+
 def encode_landm(matched, priors, variances):
     """Encode the variances from the priorbox layers into the ground truth boxes
     we have matched (based on jaccard overlap) with the prior boxes.
@@ -192,10 +197,14 @@ def encode_landm(matched, priors, variances):
 
     # dist b/t match center and prior's center
     matched = torch.reshape(matched, (matched.size(0), 5, 2))
-    priors_cx = priors[:, 0].unsqueeze(1).expand(matched.size(0), 5).unsqueeze(2)
-    priors_cy = priors[:, 1].unsqueeze(1).expand(matched.size(0), 5).unsqueeze(2)
-    priors_w = priors[:, 2].unsqueeze(1).expand(matched.size(0), 5).unsqueeze(2)
-    priors_h = priors[:, 3].unsqueeze(1).expand(matched.size(0), 5).unsqueeze(2)
+    priors_cx = priors[:, 0].unsqueeze(1).expand(
+        matched.size(0), 5).unsqueeze(2)
+    priors_cy = priors[:, 1].unsqueeze(1).expand(
+        matched.size(0), 5).unsqueeze(2)
+    priors_w = priors[:, 2].unsqueeze(1).expand(
+        matched.size(0), 5).unsqueeze(2)
+    priors_h = priors[:, 3].unsqueeze(1).expand(
+        matched.size(0), 5).unsqueeze(2)
     priors = torch.cat([priors_cx, priors_cy, priors_w, priors_h], dim=2)
     g_cxcy = matched[:, :, :2] - priors[:, :, :2]
     # encode variance
@@ -227,6 +236,7 @@ def decode(loc, priors, variances):
     boxes[:, 2:] += boxes[:, :2]
     return boxes
 
+
 def decode_landm(pre, priors, variances):
     """Decode landm from predictions using priors to undo
     the encoding we did for offset regression at train time.
@@ -240,10 +250,14 @@ def decode_landm(pre, priors, variances):
         decoded landm predictions
     """
     landms = torch.cat((priors[:, :2] + pre[:, :2] * variances[0] * priors[:, 2:],
-                        priors[:, :2] + pre[:, 2:4] * variances[0] * priors[:, 2:],
-                        priors[:, :2] + pre[:, 4:6] * variances[0] * priors[:, 2:],
-                        priors[:, :2] + pre[:, 6:8] * variances[0] * priors[:, 2:],
-                        priors[:, :2] + pre[:, 8:10] * variances[0] * priors[:, 2:],
+                        priors[:, :2] + pre[:, 2:4] *
+                        variances[0] * priors[:, 2:],
+                        priors[:, :2] + pre[:, 4:6] *
+                        variances[0] * priors[:, 2:],
+                        priors[:, :2] + pre[:, 6:8] *
+                        variances[0] * priors[:, 2:],
+                        priors[:, :2] + pre[:, 8:10] *
+                        variances[0] * priors[:, 2:],
                         ), dim=1)
     return landms
 
@@ -327,5 +341,3 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
         # keep only elements with an IoU <= overlap
         idx = idx[IoU.le(overlap)]
     return keep, count
-
-
