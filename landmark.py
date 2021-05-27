@@ -5,16 +5,20 @@ import torch
 import cv2
 from PIL import Image
 from time import time
+from retinaface import RetinaFace as Detector
+import torch.nn.functional as F
 
-from torchalign import FacialLandmarkDetector
 from data import cfg_mnet
 from models_class import IrisModel
-from models.retinaface import RetinaFace
+from models import RetinaFace
 from layers.functions.prior_box import PriorBox
 from utils.nms.py_cpu_nms import py_cpu_nms
 from utils.box_utils import decode
 import albumentations as A
 import albumentations.pytorch as AP
+from models_heatmap.heatmapmodel import HeatMapLandmarker
+
+os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
 
 torch.set_grad_enabled(False)
 
@@ -28,6 +32,22 @@ transformerr = A.Compose(
 def transform(img):
     out = transformerr(image=img)
     return out['image']
+
+def square_box(box, ori_shape):
+    x1, y1, x2, y2 = box
+    cx, cy = (x1+x2)//2, (y1+y2)//2
+    w = max(x2-x1, y2-y1)*1.2
+    x1 = cx - w//2
+    y1 = cy - w//2
+    x2 = cx + w//2
+    y2 = cy + w//2
+
+    x1 = max(x1, 0)
+    y1 = max(y1+(y2-y1)*0, 0)
+    x2 = min(x2-(x1-x1)*0, ori_shape[1]-1)
+    y2 = min(y2, ori_shape[0]-1)
+
+    return [x1, y1, x2, y2]
 
 def check_keys(model, pretrained_state_dict):
     ckpt_keys = set(pretrained_state_dict.keys())
@@ -48,19 +68,32 @@ def remove_prefix(state_dict, prefix):
     f = lambda x: x.split(prefix, 1)[-1] if x.startswith(prefix) else x
     return {f(key): value for key, value in state_dict.items()}
 
+# def load_model(model, pretrained_path, load_to_cpu):
+#     print('Loading pretrained model from {}'.format(pretrained_path))
+#     if load_to_cpu:
+#         print('Load to cpu')
+#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
+#     else:
+#         device = torch.cuda.current_device()
+#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
+#     if "state_dict" in pretrained_dict.keys():
+#         pretrained_dict = remove_prefix(pretrained_dict['state_dict'], 'module.')
+#     else:
+#         pretrained_dict = remove_prefix(pretrained_dict, 'module.')
+#     check_keys(model, pretrained_dict)
+#     model.load_state_dict(pretrained_dict, strict=False)
+#     return model
+
 def load_model(model, pretrained_path, load_to_cpu):
     print('Loading pretrained model from {}'.format(pretrained_path))
     if load_to_cpu:
+        print('Load to cpu')
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
     else:
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
-    if "state_dict" in pretrained_dict.keys():
-        pretrained_dict = remove_prefix(pretrained_dict['state_dict'], 'module.')
-    else:
-        pretrained_dict = remove_prefix(pretrained_dict, 'module.')
-    check_keys(model, pretrained_dict)
-    model.load_state_dict(pretrained_dict, strict=False)
+    state_dict = pretrained_dict['state_dict']
+    model.migrate(state_dict, force=True)
     return model
 
 def segment_eye(image, lmks, eye='left', ow=96, oh=96, transform_mat=None):
@@ -105,9 +138,9 @@ def segment_eye(image, lmks, eye='left', ow=96, oh=96, transform_mat=None):
 
 def detect_iris(img_raw, net):
     confidence_threshold = 0.02
-    top_k = 5000
+    top_k = 5
     nms_threshold=0.4
-    keep_top_k = 750
+    keep_top_k = 1
 
     img = np.float32(img_raw)
 
@@ -175,90 +208,129 @@ def paint_landmark(image, landmark):
 def filter_iris_box(dets):
     widths = dets[:, 2] - dets[:, 0]
     heights = dets[:, 3] - dets[:, 1]
-    mask = (heights / widths) > 0.5
+    mask = (heights / widths) > 0.55
     print(heights/widths)
     # print(mask)
     dets = dets[mask]
     return dets
 
-if __name__ == '__main__':
-    landmark_model_path = os.path.join('landmark_models', 'lapa', 'hrnet18_256x256_p2')
-    landmark_model = FacialLandmarkDetector(landmark_model_path)
-    landmark_model.eval()
-    if torch.cuda.is_available():
-        device = torch.device('cuda:0')
-    else:
-        device = torch.device('cpu')
-    landmark_model.to(device)
+def mean_topk_activation(heatmap, topk=7):
+    """
+    \ Find topk value in each heatmap and calculate softmax for them.
+    \ Another non topk points will be zero.
+    \Based on that https://discuss.pytorch.org/t/how-to-keep-only-top-k-percent-values/83706
+    """
+    N, C, H, W = heatmap.shape
+   
+    # Get topk points in each heatmap
+    # And using softmax for those score
+    heatmap = heatmap.view(N,C,1,-1)
+    
+    score, index = heatmap.topk(topk, dim=-1)
+    score = F.sigmoid(score)
 
+    return score
+
+def predict_landmark(detector, img, model, device):
+    THRESH_OCCLDUED = 0.5
+    faces = detector.predict(img)
+    lmks = None
+    if len(faces) !=0 :
+        box = [faces[0]['x1'], faces[0]['y1'], faces[0]['x2'], faces[0]['y2']]
+        box = square_box(box, img.shape)
+        box = list(map(int, box))
+        x1, y1, x2, y2 = box
+
+        # Inference lmks
+        crop_face = img[y1:y2, x1:x2]
+        crop_face = cv2.resize(crop_face, (256, 256))
+        img_tensor = transform(crop_face)
+        img_tensor = torch.unsqueeze(img_tensor, 0)  # 1x3x256x256
+
+        heatmapPRED, lmks = model(img_tensor.to(device))
+
+        lmks = lmks.cpu().detach().numpy()[0] # 106x2
+        lmks = lmks/256.0  # Scale into 0-1 coordination
+        lmks[:,0], lmks[:,1] = lmks[: ,0] * (x2-x1) + x1 ,\
+                            lmks[:, 1] * (y2-y1) + y1
+    return lmks
+
+if __name__ == '__main__':
+    detector = Detector(quality="normal")
+    device = 'cpu'
+    landmark_model = HeatMapLandmarker()
+    model_path = "../heatmap-based-landmarker/ckpt/epoch_80.pth.tar"
+    checkpoint = torch.load(model_path, map_location=device)
+    landmark_model.load_state_dict(checkpoint['plfd_backbone'])
+    landmark_model.to(device)
+    landmark_model.eval()
     cfg = cfg_mnet
     # net and model
-    net_path = os.path.join('weights_without_prepoc', 'mobilenet0.25_Final.pth')
+    # net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
+    net_path = 'training_lapa_ir_logs/version_0/checkpoints/checkpoint-epoch=249-val_loss=5.6218.ckpt'
+    # net_path = 'weight/weights_negpos_cleaned/mobilenet0.25_Final.pth'
+    # net_path = 'weight/train_old/mobilenet0.25_epoch_1.pth'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
-    net = net.cuda()
+    # net = net.cuda()
     net.eval()
-    # net = IrisModel()
-    # checkpoint = torch.load('../iris_classification/logs/training/version_0/checkpoints/checkpoint-epoch=13-val_loss=0.2990.ckpt', map_location=torch.device('cpu'))
-    # net.load_state_dict(checkpoint['state_dict'])
-    # net.eval()
 
     # cap = cv2.VideoCapture(0)
     # cap = cv2.VideoCapture('ir3/out2.mp4')
-    cap = cv2.VideoCapture('record.mp4')
+    cap = cv2.VideoCapture('../video/output_tatden5.mkv')
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('output_record_detection_negpos.avi', fourcc, 20.0, (320, 240))
+    out = cv2.VideoWriter('../video/output_tatden5_det_lapa_ir.avi', fourcc, 20.0, (1280, 720))
 
+    # i = 0
     while(cap.isOpened()):
         ret, frame = cap.read()
         print(frame.shape)
-        # frame = cv2.resize(frame, (320, 240))
-        # frame = cv2.resize(frame, (256, 256))
-        image = Image.fromarray(frame[:,:,::-1])
         start = time()
-        landmarks = landmark_model(image, None, device=device)[0]
-        landmarks = landmarks.cpu()
-        end = time()
-        print("Landmark time: {}".format(end-start))
-        left_eye, left_transform_mat = segment_eye(frame, landmarks, 'left')
-        right_eye, right_transform_mat = segment_eye(frame, landmarks, 'right')
-        paint_landmark(frame, landmarks)
+        landmarks = predict_landmark(detector, frame, landmark_model, device)
+        if landmarks is not None:
+            # landmarks = landmarks.cpu()
+            end = time()
+            print("Landmark time: {}".format(end-start))
+            left_eye, left_transform_mat = segment_eye(frame, landmarks, 'left')
+            right_eye, right_transform_mat = segment_eye(frame, landmarks, 'right')
+            paint_landmark(frame, landmarks)
 
-        # left_eye_resize = cv2.resize(left_eye, (32, 32))
-        # cx, cy = left_eye_resize.shape[0] // 2, left_eye_resize.shape[1] // 2
-        # left_eye_tensor = transform(left_eye_resize).unsqueeze_(0)
-        # # left_eye_tensor = torch.FloatTensor(left_eye_resize.transpose(2, 0, 1)).unsqueeze_(0)
-        # start = time()
-        # logit = net(left_eye_tensor)[0]
-        # end = time()
-        # print("Open/Close time: {}".format(end-start))
-        # pred = logit.argmax(dim=0)
-        # text = 'close' if pred == 0 else 'open'
-        # print(logit, text)
-        # cv2.putText(left_eye, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+            # left_eye_resize = cv2.resize(left_eye, (32, 32))
+            # cx, cy = left_eye_resize.shape[0] // 2, left_eye_resize.shape[1] // 2
+            # left_eye_tensor = transform(left_eye_resize).unsqueeze_(0)
+            # # left_eye_tensor = torch.FloatTensor(left_eye_resize.transpose(2, 0, 1)).unsqueeze_(0)
+            # start = time()
+            # logit = net(left_eye_tensor)[0]
+            # end = time()
+            # print("Open/Close time: {}".format(end-start))
+            # pred = logit.argmax(dim=0)
+            # text = 'close' if pred == 0 else 'open'
+            # print(logit, text)
+            # cv2.putText(left_eye, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
-        # right_eye_resize = cv2.resize(right_eye, (32, 32))
-        # cx, cy = right_eye_resize.shape[0] // 2, right_eye_resize.shape[1] // 2
-        # right_eye_tensor = transform(right_eye_resize).unsqueeze_(0)
-        # # right_eye_tensor = torch.FloatTensor(right_eye_resize.transpose(2, 0, 1)).unsqueeze_(0)
-        # logit = net(right_eye_tensor)[0]
-        # pred = logit.argmax(dim=0)
-        # text = 'close' if pred == 0 else 'open'
-        # cv2.putText(right_eye, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+            # right_eye_resize = cv2.resize(right_eye, (32, 32))
+            # cx, cy = right_eye_resize.shape[0] // 2, right_eye_resize.shape[1] // 2
+            # right_eye_tensor = transform(right_eye_resize).unsqueeze_(0)
+            # # right_eye_tensor = torch.FloatTensor(right_eye_resize.transpose(2, 0, 1)).unsqueeze_(0)
+            # logit = net(right_eye_tensor)[0]
+            # pred = logit.argmax(dim=0)
+            # text = 'close' if pred == 0 else 'open'
+            # cv2.putText(right_eye, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
-        dets = detect_iris(left_eye, net)
-        dets = filter_iris_box(dets)
-        dets = dets[dets[:, 4] > 0.85]
-        paint_bbox(left_eye, dets)
-        dets = detect_iris(right_eye, net)
-        dets = filter_iris_box(dets)
-        dets = dets[dets[:, 4] > 0.85]
-        paint_bbox(right_eye, dets)
-        left_eye = cv2.resize(left_eye, (48, 48))
-        right_eye = cv2.resize(right_eye, (48, 48))
-        eyes = np.concatenate([left_eye, right_eye], axis=1)
-        h, w = eyes.shape[:2]
-        frame[:h, :w] = eyes
+            dets = detect_iris(left_eye, net)
+            dets = filter_iris_box(dets)
+            dets = dets[dets[:, 4] > 0.8]
+            print(dets)
+            paint_bbox(left_eye, dets)
+            dets = detect_iris(right_eye, net)
+            dets = filter_iris_box(dets)
+            dets = dets[dets[:, 4] > 0.8]
+            paint_bbox(right_eye, dets)
+            # left_eye = cv2.resize(left_eye, (48, 48))
+            # right_eye = cv2.resize(right_eye, (48, 48))
+            eyes = np.concatenate([left_eye, right_eye], axis=1)
+            h, w = eyes.shape[:2]
+            frame[:h, :w] = eyes
 
         # for point in landmark[0]:
         #     frame = cv2.circle(frame, (point[0], point[1]), 2, (255,0,0), -1)

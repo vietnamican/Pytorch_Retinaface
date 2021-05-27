@@ -20,3 +20,5 @@ dataset/
 record.mp4
 checkpoint*
 logs/
+*.pth
+*logs*

@@ -1,4 +1,5 @@
 import os
+from numpy.core.fromnumeric import prod
 import torch
 import albumentations as A
 import albumentations.pytorch as AP
@@ -6,6 +7,8 @@ import cv2
 from tqdm import tqdm
 import numpy as np
 from time import time
+from itertools import product
+import json
 
 from models import RetinaFace
 from layers.functions.prior_box import PriorBox
@@ -19,10 +22,6 @@ transformerr = A.Compose(
         AP.ToTensorV2()
     ],
 )
-
-def transforms(img):
-    out = transformerr(image=img)
-    return out['image']
 
 def check_keys(model, pretrained_state_dict):
     ckpt_keys = set(pretrained_state_dict.keys())
@@ -58,6 +57,10 @@ def load_model(model, pretrained_path, device='cuda'):
     check_keys(model, pretrained_dict)
     model.load_state_dict(pretrained_dict, strict=False)
     return model
+
+def transforms(img):
+    out = transformerr(image=img)
+    return out['image']
 
 device = 'cpu'
 priorbox = PriorBox(cfg, image_size=(96, 96))
@@ -120,9 +123,13 @@ def detect_iris(img_raw, net):
 def filter_iris_box(dets, threshold):
     widths = dets[:, 2] - dets[:, 0]
     heights = dets[:, 3] - dets[:, 1]
-    mask = (heights / widths) > threshold
-    dets = dets[mask]
+    mask = (heights / widths) >threshold
+    dets = dets.copy()[mask]
     return dets
+
+def filter_confident_box(dets, threshold):
+    dets = dets.copy()
+    return dets[dets[:, 4] > threshold]
 
 def paint_bbox(image, bboxes):
     for b in bboxes:
@@ -139,69 +146,80 @@ if __name__ == '__main__':
     net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, device)
-    # net = net.cuda()
     net.eval()
+    labels = []
+    predicted = []
+
+    # rgb_image_dir = os.path.join('dataset', 'eyestate_label', 'outputir', 'Open')
+    rgb_image_dir = os.path.join('..', 'LaPa_negpos', 'positive_data', 'val', 'images')
+    # out_open_image_dir = os.path.join('out', 'outputir', 'open_open')
+    # out_close_image_dir = os.path.join('out', 'outputir', 'open_close')
     # if not os.path.isdir(out_open_image_dir):
     #     os.makedirs(out_open_image_dir)
-    # label_predict
-    open_open = 0
-    open_close = 0
-    close_open = 0
-    close_close = 0
-    conf_threshold = 0.80625
-    width_height_threshold = 0.4875 
-
-    rgb_image_dir = os.path.join('dataset', 'eyestate_label', 'outputir', 'Open')
-    out_open_image_dir = os.path.join('dataset', 'out', 'outputir', 'open_open')
-    out_close_image_dir = os.path.join('dataset', 'out', 'outputir', 'open_close')
-    if not os.path.isdir(out_open_image_dir):
-        os.makedirs(out_open_image_dir)
-    if not os.path.isdir(out_close_image_dir):
-        os.makedirs(out_close_image_dir)
+    # if not os.path.isdir(out_close_image_dir):
+    #     os.makedirs(out_close_image_dir)
     listdir = os.listdir(rgb_image_dir)
     for image_file in tqdm(listdir):
         image = cv2.imread(os.path.join(rgb_image_dir, image_file))
         dets = detect_iris(image, net)
-        dets = filter_iris_box(dets, width_height_threshold)
-        bboxes = dets[dets[:, 4] > conf_threshold]
-        if bboxes.shape[0] > 0:
-            # print('Predicted Open')
-            open_open += 1
-            paint_bbox(image, dets)
-            cv2.imwrite(os.path.join(out_open_image_dir, image_file), image)
-        else:
-            # print('Predicted Close')
-            open_close += 1
-            paint_bbox(image, dets)
-            cv2.imwrite(os.path.join(out_close_image_dir, image_file), image)
-        # paint_bbox(image, dets)
+        labels.append(1)
+        predicted.append(dets)
 
-    rgb_image_dir = os.path.join('dataset', 'eyestate_label', 'outputir', 'Close')
-    out_open_image_dir = os.path.join('dataset', 'out', 'outputir', 'close_open')
-    out_close_image_dir = os.path.join('dataset', 'out', 'outputir', 'close_close')
-    if not os.path.isdir(out_open_image_dir):
-        os.makedirs(out_open_image_dir)
-    if not os.path.isdir(out_close_image_dir):
-        os.makedirs(out_close_image_dir)
+    # rgb_image_dir = os.path.join('dataset', 'eyestate_label', 'outputir', 'Close')
+    rgb_image_dir = os.path.join('..', 'LaPa_negpos', 'negative_data', 'val', 'images')
+    # out_open_image_dir = os.path.join('out', 'outputir', 'close_open')
+    # out_close_image_dir = os.path.join('out', 'outputir', 'close_close')
+    # if not os.path.isdir(out_open_image_dir):
+    #     os.makedirs(out_open_image_dir)
+    # if not os.path.isdir(out_close_image_dir):
+    #     os.makedirs(out_close_image_dir)
     listdir = os.listdir(rgb_image_dir)
     listdir = os.listdir(rgb_image_dir)
     for image_file in tqdm(listdir):
         image = cv2.imread(os.path.join(rgb_image_dir, image_file))
         dets = detect_iris(image, net)
-        dets = filter_iris_box(dets, width_height_threshold)
-        dets = dets[dets[:, 4] > conf_threshold]
-        if dets.shape[0] > 0:
-            # print('Predicted Open')
-            close_open += 1
-            paint_bbox(image, dets)
-            cv2.imwrite(os.path.join(out_open_image_dir, image_file), image)
-        else:
-            # print('Predicted Close')
-            close_close += 1
-            cv2.imwrite(os.path.join(out_close_image_dir, image_file), image)
-        # paint_bbox(image, dets)
-        # cv2.imwrite(os.path.join(out_open_image_dir, image_file), image)
-    print(open_open, open_close, close_open, close_close)
-    # print('Accuracy with open: {}'.format(match/total))
+        labels.append(0)
+        predicted.append(dets)
 
+    results = []
+    conf_thresholds = np.linspace(0.3, 0.9, num=33)
+    width_height_threshold = np.linspace(0.3, 0.9, num=33)
+    for conf_threshold, width_height_threshold in tqdm(product(conf_thresholds, width_height_threshold)):
+        preds = []
+        for (label, pred) in zip(labels, predicted):
+            pred = filter_iris_box(pred, width_height_threshold)
+            pred = filter_confident_box(pred, conf_threshold)
+            if pred.shape[0] > 0:
+                preds.append(1)
+            else:
+                preds.append(0)
+        open_open = 1
+        open_close = 1
+        close_open = 1
+        close_close = 1
+        for (label, pred) in zip(labels, preds):
+            if label == 1 and pred == 1:
+                open_open += 1
+            elif label == 1 and pred == 0:
+                open_close += 1
+            elif label == 0 and pred == 1:
+                close_open += 1
+            else:
+                close_close += 1
 
+        report = {
+            'conf_threshold': conf_threshold,
+            'width_height_threshold': width_height_threshold,
+            'open_open': open_open,
+            'open_close': open_close,
+            'close_open': close_open,
+            'close_close': close_close,
+            'accuracy': (open_open + close_close) / (open_open + open_close + close_open + close_close),
+            'precision open': (open_open) / (open_open + close_open),
+            'recall open': (open_open) / (open_open + open_close),
+            'precision close': (close_close) / (close_close + open_close),
+            'recall close': (close_close) / (close_close + close_open)
+        }
+        results.append(report)
+    with open('data_lapa_val.json', 'w') as f:
+        json.dump(results, f)

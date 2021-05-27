@@ -9,7 +9,7 @@ import albumentations.pytorch as AP
 
 from data.mrl import MRLEyeDataset
 from data import cfg_mnet
-from models.retinaface import RetinaFace
+from models import RetinaFace
 from layers.functions.prior_box import PriorBox
 from utils.nms.py_cpu_nms import py_cpu_nms
 from utils.box_utils import decode
@@ -68,9 +68,9 @@ def load_model(model, pretrained_path, load_to_cpu):
 def detect_iris(img_raw, net):
     device='cuda'
     confidence_threshold = 0.02
-    top_k = 5000
+    top_k = 5
     nms_threshold=0.4
-    keep_top_k = 750
+    keep_top_k = 1
 
     img = np.float32(img_raw)
 
@@ -121,24 +121,23 @@ def detect_iris(img_raw, net):
 
     return dets
 
-def decode_predict(dets):
-    confs = dets[:, 4]
-    mask = confs.argmax()
-    det = dets[mask]
-    width = det[2] - det[0]
-    height = det[3] - det[1]
-    if det[4] > 0.85 and height / width > 0.5:
-        return 1, det
-    return 0, det
+def filter_iris_box(dets, threshold):
+    widths = dets[:, 2] - dets[:, 0]
+    heights = dets[:, 3] - dets[:, 1]
+    mask = (heights / widths) > threshold
+    dets = dets[mask]
+    return dets
 
-net_path = os.path.join('weights_negpos', 'mobilenet0.25_Final.pth')
+net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
 net = RetinaFace(cfg=cfg, phase = 'test')
 net = load_model(net, net_path, False)
 net.eval()
 
 if __name__ == '__main__':
-    dataset_path = os.path.join('data', 'mrleye')
-    outdir = os.path.join('data', 'mrleye', 'out')
+    width_height_threshold = 0.4875
+    conf_threshold = 0.80625
+    dataset_path = os.path.join('dataset', 'mrleye')
+    outdir = os.path.join('dataset', 'mrleye', 'out')
     if not os.path.isdir(outdir):
         os.makedirs(outdir)
     dataset = MRLEyeDataset(dataset_path, set_type='val')
@@ -153,7 +152,12 @@ if __name__ == '__main__':
         image = np.array(image[0], dtype=np.uint8)
         label = label[0].item()
         dets = detect_iris(image, net)
-        predicted, b = decode_predict(dets)
+        b = filter_iris_box(dets, width_height_threshold)
+        b = b[b[:, 4] > conf_threshold]
+        predicted = 0
+        if b.shape[0] > 0:
+            predicted = 1
+        
         if label == 1 and predicted == 1:
             open_open += 1
         if label == 1 and predicted == 0:
@@ -167,8 +171,8 @@ if __name__ == '__main__':
         # print('height', b[3]-b[1])
         # print('predicted', predicted)
         # print('label', label)
-
-        if b.shape[0] != 0 :
+        if b.shape[0] > 0:
+            b = b[0]
             text = "{:.4f}".format(b[4])
             b = [int(x) for x in b[:4]]
             cv2.rectangle(image, (b[0], b[1]), (b[2], b[3]), (0, 0, 255), 1)

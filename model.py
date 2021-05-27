@@ -1,6 +1,3 @@
-import pl_bolts
-
-
 from models.base import Base
 from models import RetinaFace
 from layers.modules import MultiBoxLoss

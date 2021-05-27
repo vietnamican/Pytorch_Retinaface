@@ -1,4 +1,3 @@
-from __future__ import print_function
 import os
 import torch
 import torch.optim as optim
@@ -12,7 +11,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 
 # from data import WiderFaceDetection, detection_collate, preproc, cfg_mnet, cfg_re50
-from data import LaPa, detection_collate, preproc, cfg_mnet, cfg_re50
+from data import LaPa, detection_collate, preproc, cfg_mnet, cfg_re50, ConcatDataset
 from layers.modules import MultiBoxLoss
 from layers.functions.prior_box import PriorBox
 import time
@@ -34,9 +33,9 @@ parser.add_argument('--val_label_dir', default='dataset/LaPa_negpos_fusion_clean
                     help='Validate labels directory')
 parser.add_argument('--network', default='mobile0.25',
                     help='Backbone network mobile0.25 or resnet50')
-parser.add_argument('--train_batch_size', default=256,
+parser.add_argument('--train_batch_size', default=128,
                     help='Batch size for training')
-parser.add_argument('--val_batch_size', default=32,
+parser.add_argument('--val_batch_size', default=24,
                     help='Batch size for training')
 parser.add_argument('--num_workers', default=12, type=int,
                     help='Number of workers used in dataloading')
@@ -51,7 +50,7 @@ parser.add_argument('--weight_decay', default=5e-4,
                     type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='./weights_negpos_cleaned/',
+parser.add_argument('--save_folder', default='training_lapa_ir_logs',
                     help='Location to save checkpoint models')
 parser.add_argument('--all', default=False,
                     help='Train on both dataset or not')
@@ -113,21 +112,59 @@ def load_trainer(logdir, device, max_epochs, checkpoint=None):
 
 
 def load_data(args, val_only=False):
-    if not val_only:
-        train_image_dir = args.train_image_dir
-        train_label_dir = args.train_label_dir
-    val_image_dir = args.val_image_dir
-    val_label_dir = args.val_label_dir
+    train_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/images'
+    train_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/labels'
+    val_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/images'
+    val_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/labels'
     train_batch_size = args.train_batch_size
     val_batch_size = args.val_batch_size
     num_workers = args.num_workers
-    # Data Setup
-    if not val_only:
-        traindataset = LaPa(train_image_dir, train_label_dir, 'train', augment=True, preload=True)
-        trainloader = DataLoader(traindataset, batch_size=train_batch_size,
-                                 pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
 
-    valdataset = LaPa(val_image_dir, val_label_dir, 'val', augment=True, preload=True)
+    train_ir_image_dirs = [
+        '../datasets/ir_negpos/positive/images/out2',
+        '../datasets/ir_negpos/positive/images/out22',
+        '../datasets/ir_negpos/positive/images/out222',
+        '../datasets/ir_negpos/negative/images/out2',
+        '../datasets/ir_negpos/negative/images/out22',
+        '../datasets/ir_negpos/negative/images/out222'
+    ]
+
+    train_ir_label_dirs = [
+        '../datasets/ir_negpos/positive/labels/out2',
+        '../datasets/ir_negpos/positive/labels/out22',
+        '../datasets/ir_negpos/positive/labels/out222',
+        '../datasets/ir_negpos/negative/labels/out2',
+        '../datasets/ir_negpos/negative/labels/out22',
+        '../datasets/ir_negpos/negative/labels/out222'
+    ]
+
+    val_ir_image_dirs = [
+        '../datasets/tatden/positive/images',
+        '../datasets/tatden/negative/images',
+    ]
+
+    val_ir_label_dirs = [
+        '../datasets/tatden/positive/labels',
+        '../datasets/tatden/negative/labels',
+    ]
+
+    lapatraindataset = LaPa(train_image_dir, train_label_dir,
+                            'train', augment=True, preload=True, to_gray=True)
+    irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
+                          'train', augment=True, preload=True, to_gray=True)
+    traindataset = ConcatDataset(lapatraindataset, irtraindataset)
+    print(len(traindataset))
+    print(len(irtraindataset))
+    print(len(lapatraindataset))
+    trainloader = DataLoader(traindataset, batch_size=train_batch_size,
+                             pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
+    lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
+                          augment=True, preload=True, to_gray=True)
+    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=True, to_gray=True)
+    valdataset = ConcatDataset(lapavaldataset, irvaldataset)
+    print(len(valdataset))
+    print(len(irvaldataset))
+    print(len(lapavaldataset))
     valloader = DataLoader(valdataset, batch_size=val_batch_size,
                            pin_memory=True, num_workers=num_workers, collate_fn=detection_collate)
     if not val_only:
@@ -141,5 +178,5 @@ if __name__ == '__main__':
     net = Model(cfg=cfg, args=args, num_training_steps=num_training_steps)
     print("Printing net...")
     print(net)
-    trainer = load_trainer('logs', 'gpu', 250)
+    trainer = load_trainer(args.save_folder, 'gpu', 250)
     trainer.fit(net, trainloader, valloader)
