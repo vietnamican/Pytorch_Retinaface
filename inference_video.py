@@ -68,34 +68,6 @@ def remove_prefix(state_dict, prefix):
     f = lambda x: x.split(prefix, 1)[-1] if x.startswith(prefix) else x
     return {f(key): value for key, value in state_dict.items()}
 
-# def load_model(model, pretrained_path, load_to_cpu):
-#     print('Loading pretrained model from {}'.format(pretrained_path))
-#     if load_to_cpu:
-#         print('Load to cpu')
-#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
-#     else:
-#         device = torch.cuda.current_device()
-#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
-#     if "state_dict" in pretrained_dict.keys():
-#         pretrained_dict = remove_prefix(pretrained_dict['state_dict'], 'module.')
-#     else:
-#         pretrained_dict = remove_prefix(pretrained_dict, 'module.')
-#     check_keys(model, pretrained_dict)
-#     model.load_state_dict(pretrained_dict, strict=False)
-#     return model
-
-# def load_model(model, pretrained_path, load_to_cpu):
-#     print('Loading pretrained model from {}'.format(pretrained_path))
-#     if load_to_cpu:
-#         print('Load to cpu')
-#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
-#     else:
-#         device = torch.cuda.current_device()
-#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
-#     state_dict = pretrained_dict['state_dict']
-#     model.migrate(state_dict, force=True)
-#     return model
-
 def load_model(model, pretrained_path, load_to_cpu):
     print('Loading pretrained model from {}'.format(pretrained_path))
     if load_to_cpu:
@@ -105,8 +77,6 @@ def load_model(model, pretrained_path, load_to_cpu):
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
     state_dict = pretrained_dict['state_dict']
-    state_dict = model.filter_state_dict_with_prefix(state_dict, 'student_model.model', True)
-    print(state_dict.keys())
     model.migrate(state_dict, force=True)
     return model
 
@@ -150,58 +120,27 @@ def segment_eye(image, lmks, eye='left', ow=96, oh=96, transform_mat=None):
 
         return eye_image, transform_mat
 
-def detect_iris(img_raw, net):
-    confidence_threshold = 0.02
-    top_k = 5
-    nms_threshold=0.4
-    keep_top_k = 1
 
-    img = np.float32(img_raw)
-
-    im_height, im_width, _ = img.shape
-    scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
-    img = transform(img).unsqueeze(0)
-    # img -= (104, 117, 123)
-    # img = img.transpose(2, 0, 1)
-    # img = torch.from_numpy(img).unsqueeze(0)
-    img = img.to(device)
-    scale = scale.to(device)
-
-    tic = time()
-    # loc, conf, landms = net(img)  # forward pass
-    loc, conf = net(img)  # forward pass
-    print('net forward time: {:.4f}'.format(time() - tic))
-
-    priorbox = PriorBox(cfg, image_size=(im_height, im_width))
+priorbox = PriorBox(cfg_mnet, image_size=(96, 96))
+with torch.no_grad():
     priors = priorbox.forward()
-    priors = priors.to(device)
+    priors = priors.to('cpu')
     prior_data = priors.data
-    boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
-    boxes = boxes * scale / 1
-    boxes = boxes.cpu().numpy()
+def detect_iris(img, net):
+    img = transform(img).unsqueeze(0)
+    img = img.to(device)
+
+    loc, conf = net(img)  # forward pass
+
     scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
-    scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-                            img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-                            img.shape[3], img.shape[2]])
-    scale1 = scale1.to(device)
+    ind = scores.argmax()
 
-    # ignore low scores
-    inds = np.where(scores > confidence_threshold)[0]
-    boxes = boxes[inds]
-    scores = scores[inds]
+    boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
+    boxes = boxes.cpu().numpy()
+    scores = scores[ind:ind+1]
+    boxes = boxes[ind:ind+1]
 
-    # keep top-K before NMS
-    order = scores.argsort()[::-1][:top_k]
-    boxes = boxes[order]
-    scores = scores[order]
-
-    # do NMS
     dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
-    keep = py_cpu_nms(dets, nms_threshold)
-    dets = dets[keep, :]
-
-    # keep top-K faster NMS
-    dets = dets[:keep_top_k, :]
 
     return dets
 
@@ -219,34 +158,17 @@ def paint_landmark(image, landmark):
     for (x, y) in landmark:
         cv2.circle(image, (x, y), 1, (255, 255, 255), -1)
 
-def filter_iris_box(dets):
+def filter_iris_box(dets, threshold):
     widths = dets[:, 2] - dets[:, 0]
     heights = dets[:, 3] - dets[:, 1]
-    mask = (heights / widths) > 0.55
-    print(heights/widths)
-    # print(mask)
+    mask = (heights / widths) > threshold
     dets = dets[mask]
     return dets
 
-def mean_topk_activation(heatmap, topk=7):
-    """
-    \ Find topk value in each heatmap and calculate softmax for them.
-    \ Another non topk points will be zero.
-    \Based on that https://discuss.pytorch.org/t/how-to-keep-only-top-k-percent-values/83706
-    """
-    N, C, H, W = heatmap.shape
-   
-    # Get topk points in each heatmap
-    # And using softmax for those score
-    heatmap = heatmap.view(N,C,1,-1)
-    
-    score, index = heatmap.topk(topk, dim=-1)
-    score = F.sigmoid(score)
-
-    return score
+def filter_conf(dets, threshold):
+    return dets[dets[:, 4] > threshold]
 
 def predict_landmark(detector, img, model, device):
-    THRESH_OCCLDUED = 0.5
     faces = detector.predict(img)
     lmks = None
     if len(faces) !=0 :
@@ -269,80 +191,60 @@ def predict_landmark(detector, img, model, device):
                             lmks[:, 1] * (y2-y1) + y1
     return lmks
 
-if __name__ == '__main__':
-    detector = Detector(quality="normal")
-    device = 'cpu'
+def load_heatmap_model():
     landmark_model = HeatMapLandmarker()
     model_path = "../heatmap-based-landmarker/ckpt/epoch_80.pth.tar"
     checkpoint = torch.load(model_path, map_location=device)
     landmark_model.load_state_dict(checkpoint['plfd_backbone'])
     landmark_model.to(device)
     landmark_model.eval()
+    return landmark_model
+
+if __name__ == '__main__':
+    detector = Detector(quality="normal")
+    device = 'cpu'
+    landmark_model = load_heatmap_model()
     cfg = cfg_mnet
-    # net and model
-    # net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
-    # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=249-val_loss=5.6218.ckpt'
-    net_path = 'distill_logs/version_0/checkpoints/checkpoint-epoch=52-val_loss=7.4488.ckpt'
-    # net_path = 'weight/weights_negpos_cleaned/mobilenet0.25_Final.pth'
-    # net_path = 'weight/train_old/mobilenet0.25_epoch_1.pth'
+    net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
-    # net = net.cuda()
     net.eval()
-
-    # cap = cv2.VideoCapture(0)
-    # cap = cv2.VideoCapture('ir3/out2.mp4')
     cap = cv2.VideoCapture('../video/output_tatden5.mkv')
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('../video/output_tatden5_det_lapa_ir.avi', fourcc, 20.0, (1280, 720))
+    out = cv2.VideoWriter('../video/output_tatden5_det_lapa_ir_2.avi', fourcc, 20.0, (1280, 720))
 
     # i = 0
+    conf_threshold = 0.80625
+    width_height_threshold = 0.4875
+
     while(cap.isOpened()):
         ret, frame = cap.read()
         print(frame.shape)
         start = time()
         landmarks = predict_landmark(detector, frame, landmark_model, device)
         if landmarks is not None:
-            # landmarks = landmarks.cpu()
             end = time()
             print("Landmark time: {}".format(end-start))
             left_eye, left_transform_mat = segment_eye(frame, landmarks, 'left')
             right_eye, right_transform_mat = segment_eye(frame, landmarks, 'right')
             paint_landmark(frame, landmarks)
 
-            # left_eye_resize = cv2.resize(left_eye, (32, 32))
-            # cx, cy = left_eye_resize.shape[0] // 2, left_eye_resize.shape[1] // 2
-            # left_eye_tensor = transform(left_eye_resize).unsqueeze_(0)
-            # # left_eye_tensor = torch.FloatTensor(left_eye_resize.transpose(2, 0, 1)).unsqueeze_(0)
-            # start = time()
-            # logit = net(left_eye_tensor)[0]
-            # end = time()
-            # print("Open/Close time: {}".format(end-start))
-            # pred = logit.argmax(dim=0)
-            # text = 'close' if pred == 0 else 'open'
-            # print(logit, text)
-            # cv2.putText(left_eye, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
-
-            # right_eye_resize = cv2.resize(right_eye, (32, 32))
-            # cx, cy = right_eye_resize.shape[0] // 2, right_eye_resize.shape[1] // 2
-            # right_eye_tensor = transform(right_eye_resize).unsqueeze_(0)
-            # # right_eye_tensor = torch.FloatTensor(right_eye_resize.transpose(2, 0, 1)).unsqueeze_(0)
-            # logit = net(right_eye_tensor)[0]
-            # pred = logit.argmax(dim=0)
-            # text = 'close' if pred == 0 else 'open'
-            # cv2.putText(right_eye, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
-
+            start = time()
             dets = detect_iris(left_eye, net)
-            dets = filter_iris_box(dets)
-            dets = dets[dets[:, 4] > 0.8]
-            print(dets)
+            end = time()
+            print("Left eye time: {}".format(end-start))
+            dets[:, :4] *= 96
+            dets = filter_iris_box(dets, width_height_threshold)
+            dets = filter_conf(dets, conf_threshold)
             paint_bbox(left_eye, dets)
+            start = time()
             dets = detect_iris(right_eye, net)
-            dets = filter_iris_box(dets)
-            dets = dets[dets[:, 4] > 0.8]
+            end = time()
+            print("Right eye time: {}".format(end-start))
+            dets[:, :4] *= 96
+            dets = filter_iris_box(dets, width_height_threshold)
+            dets = filter_conf(dets, conf_threshold)
             paint_bbox(right_eye, dets)
-            # left_eye = cv2.resize(left_eye, (48, 48))
-            # right_eye = cv2.resize(right_eye, (48, 48))
             eyes = np.concatenate([left_eye, right_eye], axis=1)
             h, w = eyes.shape[:2]
             frame[:h, :w] = eyes
