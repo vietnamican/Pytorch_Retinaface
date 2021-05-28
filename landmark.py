@@ -84,6 +84,18 @@ def remove_prefix(state_dict, prefix):
 #     model.load_state_dict(pretrained_dict, strict=False)
 #     return model
 
+# def load_model(model, pretrained_path, load_to_cpu):
+#     print('Loading pretrained model from {}'.format(pretrained_path))
+#     if load_to_cpu:
+#         print('Load to cpu')
+#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
+#     else:
+#         device = torch.cuda.current_device()
+#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
+#     state_dict = pretrained_dict['state_dict']
+#     model.migrate(state_dict, force=True)
+#     return model
+
 def load_model(model, pretrained_path, load_to_cpu):
     print('Loading pretrained model from {}'.format(pretrained_path))
     if load_to_cpu:
@@ -93,6 +105,8 @@ def load_model(model, pretrained_path, load_to_cpu):
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
     state_dict = pretrained_dict['state_dict']
+    state_dict = model.filter_state_dict_with_prefix(state_dict, 'student_model.model', True)
+    print(state_dict.keys())
     model.migrate(state_dict, force=True)
     return model
 
@@ -267,7 +281,8 @@ if __name__ == '__main__':
     cfg = cfg_mnet
     # net and model
     # net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
-    net_path = 'training_lapa_ir_logs/version_0/checkpoints/checkpoint-epoch=249-val_loss=5.6218.ckpt'
+    # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=249-val_loss=5.6218.ckpt'
+    net_path = 'distill_logs/version_0/checkpoints/checkpoint-epoch=52-val_loss=7.4488.ckpt'
     # net_path = 'weight/weights_negpos_cleaned/mobilenet0.25_Final.pth'
     # net_path = 'weight/train_old/mobilenet0.25_epoch_1.pth'
     net = RetinaFace(cfg=cfg, phase = 'test')

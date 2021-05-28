@@ -23,14 +23,6 @@ pl.seed_everything(42)
 # from models import RetinaFace
 
 parser = argparse.ArgumentParser(description='Retinaface Training')
-parser.add_argument('--train_image_dir',
-                    default='dataset/LaPa_negpos_fusion_cleaned/train/images', help='Training images directory')
-parser.add_argument('--train_label_dir',
-                    default='dataset/LaPa_negpos_fusion_cleaned/train/labels', help='Training labels directory')
-parser.add_argument('--val_image_dir', default='dataset/LaPa_negpos_fusion_cleaned/val/images',
-                    help='Validate images directory')
-parser.add_argument('--val_label_dir', default='dataset/LaPa_negpos_fusion_cleaned/val/labels',
-                    help='Validate labels directory')
 parser.add_argument('--network', default='mobile0.25',
                     help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--train_batch_size', default=128,
@@ -42,18 +34,12 @@ parser.add_argument('--num_workers', default=12, type=int,
 parser.add_argument('--lr', '--learning-rate', default=1e-3,
                     type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
-parser.add_argument('--resume_net', default=None,
-                    help='resume net for retraining')
-parser.add_argument('--resume_epoch', default=0, type=int,
-                    help='resume iter for retraining')
 parser.add_argument('--weight_decay', default=5e-4,
                     type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
 parser.add_argument('--save_folder', default='training_lapa_ir_logs',
                     help='Location to save checkpoint models')
-parser.add_argument('--all', default=False,
-                    help='Train on both dataset or not')
 
 args = parser.parse_args()
 
@@ -116,9 +102,6 @@ def load_data(args, val_only=False):
     train_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/labels'
     val_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/images'
     val_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/labels'
-    train_batch_size = args.train_batch_size
-    val_batch_size = args.val_batch_size
-    num_workers = args.num_workers
 
     train_ir_image_dirs = [
         '../datasets/ir_negpos/positive/images/out2',
@@ -148,10 +131,14 @@ def load_data(args, val_only=False):
         '../datasets/tatden/negative/labels',
     ]
 
+    train_batch_size = args.train_batch_size
+    val_batch_size = args.val_batch_size
+    num_workers = args.num_workers
+    
     lapatraindataset = LaPa(train_image_dir, train_label_dir,
-                            'train', augment=True, preload=True, to_gray=True)
+                            'train', augment=True, preload=True, to_gray=False)
     irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
-                          'train', augment=True, preload=True, to_gray=True)
+                          'train', augment=True, preload=True, to_gray=False)
     traindataset = ConcatDataset(lapatraindataset, irtraindataset)
     print(len(traindataset))
     print(len(irtraindataset))
@@ -159,8 +146,8 @@ def load_data(args, val_only=False):
     trainloader = DataLoader(traindataset, batch_size=train_batch_size,
                              pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
     lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
-                          augment=True, preload=True, to_gray=True)
-    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=True, to_gray=True)
+                          augment=True, preload=True, to_gray=False)
+    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=True, to_gray=False)
     valdataset = ConcatDataset(lapavaldataset, irvaldataset)
     print(len(valdataset))
     print(len(irvaldataset))

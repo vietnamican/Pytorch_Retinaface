@@ -43,21 +43,35 @@ def remove_prefix(state_dict, prefix):
     f = lambda x: x.split(prefix, 1)[-1] if x.startswith(prefix) else x
     return {f(key): value for key, value in state_dict.items()}
 
-def load_model(model, pretrained_path, device='cuda'):
+def load_model(model, pretrained_path, load_to_cpu):
     print('Loading pretrained model from {}'.format(pretrained_path))
-    if device == 'cpu':
-        print('load to cpu')
+    if load_to_cpu:
+        print('Load to cpu')
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
     else:
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
-    if "state_dict" in pretrained_dict.keys():
-        pretrained_dict = remove_prefix(pretrained_dict['state_dict'], 'module.')
-    else:
-        pretrained_dict = remove_prefix(pretrained_dict, 'module.')
-    check_keys(model, pretrained_dict)
-    model.load_state_dict(pretrained_dict, strict=False)
+    state_dict = pretrained_dict['state_dict']
+    state_dict = model.filter_state_dict_with_prefix(state_dict, 'student_model.model', True)
+    print(state_dict.keys())
+    model.migrate(state_dict, force=True)
     return model
+
+# def load_model(model, pretrained_path, device='cuda'):
+#     print('Loading pretrained model from {}'.format(pretrained_path))
+#     if device == 'cpu':
+#         print('load to cpu')
+#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
+#     else:
+#         device = torch.cuda.current_device()
+#         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
+#     if "state_dict" in pretrained_dict.keys():
+#         pretrained_dict = remove_prefix(pretrained_dict['state_dict'], 'module.')
+#     else:
+#         pretrained_dict = remove_prefix(pretrained_dict, 'module.')
+#     check_keys(model, pretrained_dict)
+#     model.load_state_dict(pretrained_dict, strict=False)
+#     return model
 
 device = 'cpu'
 priorbox = PriorBox(cfg, image_size=(96, 96))
@@ -136,7 +150,8 @@ def paint_bbox(image, bboxes):
 
 if __name__ == '__main__':
     # net_path = os.path.join('weights_negpos', 'mobilenet0.25_Final.pth')
-    net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
+    # net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
+    net_path = 'distill_logs/version_0/checkpoints/checkpoint-epoch=52-val_loss=7.4488.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, device)
     # net = net.cuda()
@@ -151,9 +166,9 @@ if __name__ == '__main__':
     conf_threshold = 0.80625
     width_height_threshold = 0.4875 
 
-    rgb_image_dir = os.path.join('dataset', 'eyestate_label', 'outputir', 'Open')
-    out_open_image_dir = os.path.join('dataset', 'out', 'outputir', 'open_open')
-    out_close_image_dir = os.path.join('dataset', 'out', 'outputir', 'open_close')
+    rgb_image_dir = os.path.join('../datasets', 'eyestate_label', 'outputrgb', 'Open')
+    out_open_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'open_open')
+    out_close_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'open_close')
     if not os.path.isdir(out_open_image_dir):
         os.makedirs(out_open_image_dir)
     if not os.path.isdir(out_close_image_dir):
@@ -168,17 +183,17 @@ if __name__ == '__main__':
             # print('Predicted Open')
             open_open += 1
             paint_bbox(image, dets)
-            cv2.imwrite(os.path.join(out_open_image_dir, image_file), image)
+            # cv2.imwrite(os.path.join(out_open_image_dir, image_file), image)
         else:
             # print('Predicted Close')
             open_close += 1
             paint_bbox(image, dets)
-            cv2.imwrite(os.path.join(out_close_image_dir, image_file), image)
+            # cv2.imwrite(os.path.join(out_close_image_dir, image_file), image)
         # paint_bbox(image, dets)
 
-    rgb_image_dir = os.path.join('dataset', 'eyestate_label', 'outputir', 'Close')
-    out_open_image_dir = os.path.join('dataset', 'out', 'outputir', 'close_open')
-    out_close_image_dir = os.path.join('dataset', 'out', 'outputir', 'close_close')
+    rgb_image_dir = os.path.join('../datasets', 'eyestate_label', 'outputrgb', 'Close')
+    out_open_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'close_open')
+    out_close_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'close_close')
     if not os.path.isdir(out_open_image_dir):
         os.makedirs(out_open_image_dir)
     if not os.path.isdir(out_close_image_dir):
@@ -194,11 +209,11 @@ if __name__ == '__main__':
             # print('Predicted Open')
             close_open += 1
             paint_bbox(image, dets)
-            cv2.imwrite(os.path.join(out_open_image_dir, image_file), image)
+            # cv2.imwrite(os.path.join(out_open_image_dir, image_file), image)
         else:
             # print('Predicted Close')
             close_close += 1
-            cv2.imwrite(os.path.join(out_close_image_dir, image_file), image)
+            # cv2.imwrite(os.path.join(out_close_image_dir, image_file), image)
         # paint_bbox(image, dets)
         # cv2.imwrite(os.path.join(out_open_image_dir, image_file), image)
     print(open_open, open_close, close_open, close_close)

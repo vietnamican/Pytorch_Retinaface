@@ -24,6 +24,9 @@ class Model(Base):
 
         self.criterion = MultiBoxLoss(
             self.num_classes, 0.35, True, 0, True, 7, 0.35, False)
+    
+    def forward(self, x):
+        return self.model(x)
 
     def training_step(self, batch, batch_idx):
         images, targets = batch
