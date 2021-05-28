@@ -17,7 +17,7 @@ from layers.functions.prior_box import PriorBox
 import time
 import datetime
 import math
-from model import Model, ModelWidth
+from model import Model, ModelDistill, ModelWidth, Distill
 
 pl.seed_everything(42)
 # from models import RetinaFace
@@ -35,11 +35,11 @@ parser.add_argument('--network', default='mobile0.25',
                     help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--train_batch_size', default=128,
                     help='Batch size for training')
-parser.add_argument('--val_batch_size', default=24,
+parser.add_argument('--val_batch_size', default=32,
                     help='Batch size for training')
 parser.add_argument('--num_workers', default=12, type=int,
                     help='Number of workers used in dataloading')
-parser.add_argument('--lr', '--learning-rate', default=1e-3,
+parser.add_argument('--lr', '--learning-rate', default=0.02,
                     type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--resume_net', default=None,
@@ -50,7 +50,7 @@ parser.add_argument('--weight_decay', default=5e-4,
                     type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='training_lapa_ir_logs',
+parser.add_argument('--save_folder', default='distill_logs',
                     help='Location to save checkpoint models')
 parser.add_argument('--all', default=False,
                     help='Train on both dataset or not')
@@ -175,8 +175,15 @@ def load_data(args, val_only=False):
 if __name__ == '__main__':
     _, trainloader, _, valloader = load_data(args)
     num_training_steps = len(trainloader)
-    net = ModelWidth(cfg=cfg, args=args, num_training_steps=num_training_steps)
+    student_net = ModelDistill(cfg=cfg, args=args, num_training_steps=num_training_steps)
+    teacher_net = ModelWidth(cfg=cfg, args=args, num_training_steps=num_training_steps, phase='distill')
+    teacher_checkpoint_path = 'training_lapa_ir_logs/mobilenet0.25_wide/checkpoints/checkpoint-epoch=249-val_loss=5.5513.ckpt'
+    teacher_checkpoint = torch.load(teacher_checkpoint_path, map_location=torch.device('cuda'))
+    state_dict = teacher_checkpoint['state_dict']
+    state_dict = teacher_net.filter_state_dict_with_prefix(state_dict, 'model', True)
+    teacher_net.migrate(state_dict, force=True)
+    net = Distill(teacher_model=teacher_net, student_model=student_net, cfg=cfg, args=args)
     print("Printing net...")
     print(net)
-    trainer = load_trainer(args.save_folder, 'gpu', 250)
+    trainer = load_trainer(args.save_folder, 'gpu', cfg['distill_epochs'])
     trainer.fit(net, trainloader, valloader)

@@ -1,3 +1,3 @@
-from .multibox_loss import MultiBoxLoss
+from .multibox_loss import MultiBoxLoss, MultiBoxLossDistill
 
-__all__ = ['MultiBoxLoss']
+__all__ = ['MultiBoxLoss', 'MultiBoxLossDistill']

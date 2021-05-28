@@ -16,7 +16,12 @@ cfg_mnet = {
     'pretrain': False,
     'return_layers': {'stage1': 1, 'stage2': 2, 'stage3': 3},
     'in_channel': 32,
-    'out_channel': 64
+    'out_channel': 64,
+
+    # distill
+    'distill_epochs': 80,
+    'distill_decay1': 55,
+    'distill_decay2': 68
 }
 
 cfg_re50 = {

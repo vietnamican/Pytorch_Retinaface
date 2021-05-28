@@ -136,6 +136,30 @@ def segment_eye(image, lmks, eye='left', ow=96, oh=96, transform_mat=None):
 
         return eye_image, transform_mat
 
+priorbox = PriorBox(cfg_mnet, image_size=(96, 96))
+priors = priorbox.forward()
+priors = priors.to('cpu')
+prior_data = priors.data
+
+# def detect_iris(img, net):
+#     img = transform(img).unsqueeze(0)
+#     img = img.to(device)
+
+#     loc, conf = net(img)  # forward pass
+
+    
+#     scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
+#     ind = scores.argmax()
+
+#     boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
+#     boxes = boxes.cpu().numpy()
+#     scores = scores[ind:ind+1]
+#     boxes = boxes[ind:ind+1]
+
+#     dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
+
+#     return dets
+
 def detect_iris(img_raw, net):
     confidence_threshold = 0.02
     top_k = 5
@@ -153,10 +177,10 @@ def detect_iris(img_raw, net):
     img = img.to(device)
     scale = scale.to(device)
 
-    tic = time()
+    # tic = time()
     # loc, conf, landms = net(img)  # forward pass
     loc, conf = net(img)  # forward pass
-    print('net forward time: {:.4f}'.format(time() - tic))
+    # print('net forward time: {:.4f}'.format(time() - tic))
 
     priorbox = PriorBox(cfg, image_size=(im_height, im_width))
     priors = priorbox.forward()
@@ -209,7 +233,7 @@ def filter_iris_box(dets):
     widths = dets[:, 2] - dets[:, 0]
     heights = dets[:, 3] - dets[:, 1]
     mask = (heights / widths) > 0.55
-    print(heights/widths)
+    # print(heights/widths)
     # print(mask)
     dets = dets[mask]
     return dets
@@ -267,7 +291,7 @@ if __name__ == '__main__':
     cfg = cfg_mnet
     # net and model
     # net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
-    net_path = 'training_lapa_ir_logs/version_0/checkpoints/checkpoint-epoch=249-val_loss=5.6218.ckpt'
+    net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=249-val_loss=5.6218.ckpt'
     # net_path = 'weight/weights_negpos_cleaned/mobilenet0.25_Final.pth'
     # net_path = 'weight/train_old/mobilenet0.25_epoch_1.pth'
     net = RetinaFace(cfg=cfg, phase = 'test')
@@ -284,7 +308,7 @@ if __name__ == '__main__':
     # i = 0
     while(cap.isOpened()):
         ret, frame = cap.read()
-        print(frame.shape)
+        # print(frame.shape)
         start = time()
         landmarks = predict_landmark(detector, frame, landmark_model, device)
         if landmarks is not None:
@@ -316,11 +340,13 @@ if __name__ == '__main__':
             # pred = logit.argmax(dim=0)
             # text = 'close' if pred == 0 else 'open'
             # cv2.putText(right_eye, text, (cx, cy), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
-
+            start = time()
             dets = detect_iris(left_eye, net)
+            end = time()
+            print('Detect time:', end - start)
             dets = filter_iris_box(dets)
             dets = dets[dets[:, 4] > 0.8]
-            print(dets)
+            # print(dets)
             paint_bbox(left_eye, dets)
             dets = detect_iris(right_eye, net)
             dets = filter_iris_box(dets)
