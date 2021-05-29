@@ -76,6 +76,9 @@ def filter_iris_box(dets, threshold):
     dets = dets[mask]
     return dets
 
+def filter_conf(dets, threshold):
+    return dets[dets[:, 4] > threshold]
+
 def paint_box(image, bboxes):
     for b in bboxes:
         text = "{:.4f}".format(b[4])
@@ -101,6 +104,7 @@ if __name__ == '__main__':
     dets[:, (0, 2)]*= width
     dets[:, (1, 3)]*= height
 
+    dets = filter_conf(dets, conf_threshold)
     dets = filter_iris_box(dets, width_height_threshold)
     paint_box(image, dets)
     cv2.imwrite('result.jpg', image)
