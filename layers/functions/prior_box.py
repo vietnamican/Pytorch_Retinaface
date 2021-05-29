@@ -1,7 +1,7 @@
 import torch
 from itertools import product as product
 import numpy as np
-from math import ceil
+from math import ceil, sqrt
 
 
 class PriorBox(object):
@@ -11,7 +11,9 @@ class PriorBox(object):
         self.steps = cfg['steps']
         self.clip = cfg['clip']
         self.image_size = image_size
+        self.ratios = cfg['ratios'] if 'ratio' in cfg else [1]
         self.feature_maps = [[ceil(self.image_size[0]/step), ceil(self.image_size[1]/step)] for step in self.steps]
+        self.stride = cfg['stride_prior'] if 'stride_prior' in cfg else 1
         # print(self.feature_maps)
         self.name = "s"
 
@@ -19,15 +21,17 @@ class PriorBox(object):
         anchors = []
         for k, f in enumerate(self.feature_maps):
             min_sizes = self.min_sizes[k]
-            for i, j in product(range(f[0]), range(f[1])):
+            stride = self.stride
+            for i, j in product(range(0, f[0], stride), range(0, f[1], stride)):
                 for min_size in min_sizes:
-                    s_kx = min_size / self.image_size[1]
-                    s_ky = min_size / self.image_size[0]
-                    dense_cx = [x * self.steps[k] / self.image_size[1] for x in [j + 0.5]]
-                    dense_cy = [y * self.steps[k] / self.image_size[0] for y in [i + 0.5]]
-                    # print(dense_cx, dense_cy)
-                    for cy, cx in product(dense_cy, dense_cx):
-                        anchors += [cx, cy, s_kx, s_ky]
+                    for ratio in self.ratios:
+                        min_size_x = min_size * sqrt(ratio)
+                        min_size_y = min_size / sqrt(ratio)
+                        s_kx = min_size_x / self.image_size[1]
+                        s_ky = min_size_y / self.image_size[0]
+                        cx = (j + 0.5) * self.steps[k] / self.image_size[1]
+                        cy = (i + 0.5) * self.steps[k] / self.image_size[0]
+                        anchors.append([cx, cy, s_kx, s_ky])
 
         # back to torch land
         output = torch.Tensor(anchors).view(-1, 4)
@@ -38,27 +42,30 @@ class PriorBox(object):
 
 cfg = {
     'name': 'mobilenet0.25',
-    'min_sizes': [[16, 32], [64, 128], [256, 512]],
-    'steps': [8, 16, 32],
+    'min_sizes': [[16, 32]],
+    'ratios': [1, 1.5, 2], # width/height
+    'steps': [8],
     'variance': [0.1, 0.2],
     'clip': False,
     'loc_weight': 2.0,
     'gpu_train': True,
-    'batch_size': 2,
     'ngpu': 1,
     'epoch': 250,
     'decay1': 190,
     'decay2': 220,
     'image_size': 96,
-    'pretrain': True,
+    'pretrain': False,
     'return_layers': {'stage1': 1, 'stage2': 2, 'stage3': 3},
     'in_channel': 32,
-    'out_channel': 64
+    'out_channel': 64,
+    # 'stride_prior': 1
 }
 
 if __name__ == '__main__':
     prior = PriorBox(cfg=cfg, image_size=(96,96))
     out = prior.forward()
-    # print(out.shape)
+
+    print(out.shape)
+    print(out[:5])
     # for o in out:
     #     print(o)
