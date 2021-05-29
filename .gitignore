@@ -22,3 +22,4 @@ checkpoint*
 logs/
 *.pth
 *logs*
+*.json

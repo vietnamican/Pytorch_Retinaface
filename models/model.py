@@ -45,24 +45,9 @@ class RetinaFace(Base):
         self.phase = phase
         backbone = None
         if cfg['name'] == 'mobilenet0.25':
-            backbone = MobileNetV1()
-            if cfg['pretrain']:
-                checkpoint = torch.load("./weights/mobilenetV1X0.25_pretrain.tar", map_location=torch.device('cpu'))
-                from collections import OrderedDict
-                new_state_dict = OrderedDict()
-                for k, v in checkpoint['state_dict'].items():
-                    name = k[7:]  # remove module.
-                    new_state_dict[name] = v
-                # load params
-                backbone.load_state_dict(new_state_dict)
-        elif cfg['name'] == 'Resnet50':
-            import torchvision.models as models
-            backbone = models.resnet50(pretrained=cfg['pretrain'])
-
-        self.body = _utils.IntermediateLayerGetter(backbone, cfg['return_layers'])
+            self.body = MobileNetV1()
         in_channels_stage2 = cfg['in_channel']
         in_channels_list = [
-            in_channels_stage2 * 2,
             in_channels_stage2 * 4,
             in_channels_stage2 * 8,
         ]
@@ -77,12 +62,16 @@ class RetinaFace(Base):
         classhead = nn.ModuleList()
         for i in range(fpn_num):
             classhead.append(ClassHead(inchannels,anchor_num))
+        if len(classhead) == 1:
+            return classhead[0]
         return classhead
     
     def _make_bbox_head(self,fpn_num=3,inchannels=64,anchor_num=2):
         bboxhead = nn.ModuleList()
         for i in range(fpn_num):
             bboxhead.append(BboxHead(inchannels,anchor_num))
+        if len(bboxhead) == 1:
+            return bboxhead[0]
         return bboxhead
 
 
@@ -93,10 +82,10 @@ class RetinaFace(Base):
         fpn = self.fpn(out)
 
         # SSH
-        feature1 = self.ssh1(fpn[0])
+        feature = self.ssh1(fpn)
 
-        bbox_regressions = self.BboxHead[0](feature1)
-        classifications = self.ClassHead[0](feature1)
+        bbox_regressions = self.BboxHead(feature)
+        classifications = self.ClassHead(feature)
 
         if self.phase == 'train':
             output = (bbox_regressions, classifications)

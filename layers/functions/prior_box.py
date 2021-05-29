@@ -38,20 +38,19 @@ class PriorBox(object):
 
 cfg = {
     'name': 'mobilenet0.25',
-    'min_sizes': [[16, 32], [64, 128], [256, 512]],
-    'steps': [8, 16, 32],
+    'min_sizes': [[16, 32]],
+    'steps': [16],
     'variance': [0.1, 0.2],
     'clip': False,
     'loc_weight': 2.0,
     'gpu_train': True,
-    'batch_size': 2,
     'ngpu': 1,
-    'epoch': 250,
-    'decay1': 190,
-    'decay2': 220,
+    'max_epochs': 250,
+    'warmup_epochs' : 5,
+    'decay_steps': [0.76, 0.88],
     'image_size': 96,
-    'pretrain': True,
-    'return_layers': {'stage1': 1, 'stage2': 2, 'stage3': 3},
+    'pretrain': False,
+    'return_layers': {'stage2': 2, 'stage3': 3},
     'in_channel': 32,
     'out_channel': 64
 }

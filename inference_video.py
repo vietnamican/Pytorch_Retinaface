@@ -205,7 +205,7 @@ if __name__ == '__main__':
     device = 'cpu'
     landmark_model = load_heatmap_model()
     cfg = cfg_mnet
-    net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
+    net_path = 'training_16x_featuremap/version_0/checkpoints/checkpoint-epoch=247-val_loss=6.2495.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
     net.eval()

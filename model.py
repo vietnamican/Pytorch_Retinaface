@@ -10,7 +10,7 @@ class Model(Base):
         super().__init__()
         self.cfg = cfg
         self.args = args
-        self.warmup_epochs = 5
+        self.warmup_epochs = self.cfg['warmup_epochs']
         self.num_training_steps = num_training_steps
         self.total_warmup_steps = self.num_training_steps * self.warmup_epochs
         self.model = RetinaFace(cfg, phase)
@@ -50,9 +50,11 @@ class Model(Base):
 
     def configure_optimizers(self):
         lr, momentum, weight_decay = self.args.lr, self.args.momentum, self.args.weight_decay
+        max_epochs = self.cfg['max_epochs']
+        steps = [round(step * max_epochs) for step in self.cfg['decay_steps']]
         optimizer = optim.SGD(self.model.parameters(), lr=lr,
                               momentum=momentum, weight_decay=weight_decay)
-        lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[190, 220], gamma=0.1)
+        lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=steps, gamma=0.1)
         return [optimizer], [lr_scheduler]
 
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu, using_native_amp, using_lbfgs):

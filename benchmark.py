@@ -20,7 +20,7 @@ transformerr = A.Compose(
     ],
 )
 
-def transforms(img):
+def transform(img):
     out = transformerr(image=img)
     return out['image']
 
@@ -52,8 +52,8 @@ def load_model(model, pretrained_path, load_to_cpu):
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
     state_dict = pretrained_dict['state_dict']
-    state_dict = model.filter_state_dict_with_prefix(state_dict, 'student_model.model', True)
-    print(state_dict.keys())
+    # state_dict = model.filter_state_dict_with_prefix(state_dict, 'student_model.model', True)
+    # print(state_dict.keys())
     model.migrate(state_dict, force=True)
     return model
 
@@ -73,61 +73,27 @@ def load_model(model, pretrained_path, load_to_cpu):
 #     model.load_state_dict(pretrained_dict, strict=False)
 #     return model
 
-device = 'cpu'
+device='cpu'
 priorbox = PriorBox(cfg, image_size=(96, 96))
-priors = priorbox.forward()
-priors = priors.to(device)
-prior_data = priors.data
-
-def detect_iris(img_raw, net):
-    confidence_threshold = 0.02
-    top_k = 5
-    nms_threshold=0.4
-    keep_top_k = 1
-
-    img = np.float32(img_raw)
-
-    im_height, im_width, _ = img.shape
-    scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
-    img = transforms(img).unsqueeze(0)
-    # img -= (104, 117, 123)
-    # img = img.transpose(2, 0, 1)
-    # img = torch.from_numpy(img).unsqueeze(0)
+with torch.no_grad():
+    priors = priorbox.forward()
+    priors = priors.to('cpu')
+    prior_data = priors.data
+def detect_iris(img, net):
+    img = transform(img).unsqueeze(0)
     img = img.to(device)
-    scale = scale.to(device)
 
-    tic = time()
-    # loc, conf, landms = net(img)  # forward pass
     loc, conf = net(img)  # forward pass
-    # print('net forward time: {:.4f}'.format(time() - tic))
 
-    
-    boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
-    boxes = boxes * scale / 1
-    boxes = boxes.cpu().numpy()
     scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
-    # scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-    #                         img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-    #                         img.shape[3], img.shape[2]])
-    # scale1 = scale1.to(device)
+    ind = scores.argmax()
 
-    # ignore low scores
-    inds = np.where(scores > confidence_threshold)[0]
-    boxes = boxes[inds]
-    scores = scores[inds]
+    boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
+    boxes = boxes.cpu().numpy()
+    scores = scores[ind:ind+1]
+    boxes = boxes[ind:ind+1]
 
-    # keep top-K before NMS
-    order = scores.argsort()[::-1][:top_k]
-    boxes = boxes[order]
-    scores = scores[order]
-
-    # do NMS
     dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
-    keep = py_cpu_nms(dets, nms_threshold)
-    dets = dets[keep, :]
-
-    # keep top-K faster NMS
-    dets = dets[:keep_top_k, :]
 
     return dets
 
@@ -151,7 +117,7 @@ def paint_bbox(image, bboxes):
 if __name__ == '__main__':
     # net_path = os.path.join('weights_negpos', 'mobilenet0.25_Final.pth')
     # net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
-    net_path = 'distill_logs/version_0/checkpoints/checkpoint-epoch=52-val_loss=7.4488.ckpt'
+    net_path = 'training_16x_featuremap/version_0/checkpoints/checkpoint-epoch=68-val_loss=5.7179.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, device)
     # net = net.cuda()
