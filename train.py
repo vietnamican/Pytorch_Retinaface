@@ -38,7 +38,7 @@ parser.add_argument('--weight_decay', default=5e-4,
                     type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='test_logs',
+parser.add_argument('--save_folder', default='multi_ratio_prior_box_logs',
                     help='Location to save checkpoint models')
 
 args = parser.parse_args()
@@ -165,5 +165,5 @@ if __name__ == '__main__':
     net = Model(cfg=cfg, args=args, num_training_steps=num_training_steps)
     print("Printing net...")
     print(net)
-    trainer = load_trainer(args.save_folder, 'gpu', 250)
+    trainer = load_trainer(args.save_folder, 'gpu', cfg['max_epochs'])
     trainer.fit(net, trainloader, valloader)

@@ -6,11 +6,11 @@ from layers.functions.prior_box import PriorBox
 
 
 class Model(Base):
-    def __init__(self, cfg=None, args=None, num_training_steps=10 ,phase='train'):
+    def __init__(self, cfg=None, args=None, num_training_steps=10, phase='train'):
         super().__init__()
         self.cfg = cfg
         self.args = args
-        self.warmup_epochs = 5
+        self.warmup_epochs = self.cfg['warmup_epochs']
         self.num_training_steps = num_training_steps
         self.total_warmup_steps = self.num_training_steps * self.warmup_epochs
         self.model = RetinaFace(cfg, phase)
@@ -24,7 +24,7 @@ class Model(Base):
 
         self.criterion = MultiBoxLoss(
             self.num_classes, 0.35, True, 0, True, 7, 0.35, False)
-    
+
     def forward(self, x):
         return self.model(x)
 
@@ -50,15 +50,19 @@ class Model(Base):
 
     def configure_optimizers(self):
         lr, momentum, weight_decay = self.args.lr, self.args.momentum, self.args.weight_decay
+        max_epochs = self.cfg['max_epochs']
+        steps = [round(step*max_epochs) for step in self.cfg['decay_steps']]
         optimizer = optim.SGD(self.model.parameters(), lr=lr,
                               momentum=momentum, weight_decay=weight_decay)
-        lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[190, 220], gamma=0.1)
+        lr_scheduler = optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=steps, gamma=0.1)
         return [optimizer], [lr_scheduler]
 
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu, using_native_amp, using_lbfgs):
-         # warm up lr
+        # warm up lr
         if self.trainer.global_step < self.total_warmup_steps:
-            lr_scale = min(1., float(self.trainer.global_step + 1.) / self.total_warmup_steps)
+            lr_scale = min(1., float(self.trainer.global_step +
+                           1.) / self.total_warmup_steps)
             for pg in optimizer.param_groups:
                 pg['lr'] = lr_scale * self.args.lr
 

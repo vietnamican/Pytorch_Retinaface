@@ -14,7 +14,6 @@ class PriorBox(object):
         self.ratios = cfg['ratios'] if 'ratio' in cfg else [1]
         self.feature_maps = [[ceil(self.image_size[0]/step), ceil(self.image_size[1]/step)] for step in self.steps]
         self.stride = cfg['stride_prior'] if 'stride_prior' in cfg else 1
-        # print(self.feature_maps)
         self.name = "s"
 
     def forward(self):
