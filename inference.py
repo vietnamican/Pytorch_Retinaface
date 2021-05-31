@@ -95,20 +95,22 @@ if __name__ == '__main__':
     conf_threshold = 0.80625
     width_height_threshold = 0.4875
 
-    image_path = 'sample.jpg'
+    image_path = 'sample.jpeg'
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    dets = detect_iris(image, model)
+    image = np.concatenate([image, image], axis=0)
+    print(image.shape)
+#     dets = detect_iris(image, model)
 
-    # convert ratio to pixel
-    height, width = image.shape[:2]
-    dets[:, (0, 2)]*= width
-    dets[:, (1, 3)]*= height
+#     # convert ratio to pixel
+#     height, width = image.shape[:2]
+#     dets[:, (0, 2)]*= width
+#     dets[:, (1, 3)]*= height
 
-    dets = filter_conf(dets, conf_threshold)
-    dets = filter_iris_box(dets, width_height_threshold)
-    paint_box(image, dets)
-    cv2.imwrite('result.jpg', image)
-    # print(dets)
+#     dets = filter_conf(dets, conf_threshold)
+#     dets = filter_iris_box(dets, width_height_threshold)
+#     paint_box(image, dets)
+#     cv2.imwrite('result.jpg', image)
+#     # print(dets)
 
 
-# summary(model, (2, 3, 96, 96))
+# # summary(model, (2, 3, 96, 96))
