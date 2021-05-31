@@ -42,9 +42,9 @@ def conv_dw(inp, oup, stride, leaky=0.1):
     )
 
 
-class SSH(nn.Module):
+class ComplicateSSH(nn.Module):
     def __init__(self, in_channel, out_channel):
-        super(SSH, self).__init__()
+        super().__init__()
         assert out_channel % 4 == 0
         leaky = 0
         if (out_channel <= 64):
@@ -73,6 +73,19 @@ class SSH(nn.Module):
         out = torch.cat([conv3X3, conv5X5, conv7X7], dim=1)
         out = F.relu(out)
         return out
+    
+class SimpleSSH(nn.Module):
+    def __init__(self, in_channel, out_channel):
+        super().__init__()
+        assert out_channel % 4 == 0
+        leaky = 0
+        if (out_channel <= 64):
+            leaky = 0.1
+        self.conv = conv_dw(
+            in_channel, out_channel, stride=1, leaky=leaky)
+
+    def forward(self, x):
+        return self.conv(x)
 
 
 class FPN(nn.Module):
@@ -91,13 +104,12 @@ class FPN(nn.Module):
         self.merge1 = conv_bn(out_channels, out_channels, leaky=leaky)
         self.merge2 = conv_bn(out_channels, out_channels, leaky=leaky)
 
-    def forward(self, input):
+    def forward(self, x):
         # names = list(input.keys())
-        input = list(input.values())
 
-        output1 = self.output1(input[0])
-        output2 = self.output2(input[1])
-        output3 = self.output3(input[2])
+        output1 = self.output1(x[0])
+        output2 = self.output2(x[1])
+        output3 = self.output3(x[2])
 
         up3 = F.interpolate(output3, size=[output2.size(
             2), output2.size(3)], mode="nearest")
@@ -143,4 +155,5 @@ class MobileNetV1(nn.Module):
         stage1 = self.stage1(x)
         stage2 = self.stage2(stage1)
         stage3 = self.stage3(stage2)
-        return {'stage1': stage1, 'stage2': stage2, 'stage3': stage3}
+        return stage1, stage2, stage3
+        # return {'stage1': stage1, 'stage2': stage2, 'stage3': stage3}
