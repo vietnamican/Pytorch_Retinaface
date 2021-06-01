@@ -124,6 +124,31 @@ class FPN(nn.Module):
         out = [output1, output2, output3]
         return out
 
+class Aggregate(nn.Module):
+    def __init__(self, in_channels_list, out_channels):
+        super().__init__()
+        leaky = 0
+        if (out_channels <= 64):
+            leaky = 0.1
+        self.output1 = conv_bn1X1(
+            in_channels_list[0], out_channels, stride=1, leaky=leaky)
+        self.output2 = conv_bn1X1(
+            in_channels_list[1], out_channels, stride=1, leaky=leaky)
+        self.output3 = conv_bn1X1(
+            in_channels_list[2], out_channels, stride=1, leaky=leaky)
+        
+        self.aggregate = conv_bn(out_channels, out_channels, leaky=leaky)
+        
+    def forward(self, x):
+        output1 = self.output1(x[0])
+        output2 = self.output2(x[1])
+        output3 = self.output3(x[2])
+        output3 = F.interpolate(output3, size=[output1.size(2), output1.size(3)], mode="nearest")
+        output2 = F.interpolate(output2, size=[output1.size(2), output1.size(3)], mode="nearest")
+
+        out = output1 + output2 + output3
+        return self.aggregate(out)
+
 
 class MobileNetV1(nn.Module):
     def __init__(self):
@@ -136,23 +161,21 @@ class MobileNetV1(nn.Module):
             conv_dw(32, 64, 2),  # 27
             conv_dw(64, 64, 1),  # 43
         )
-        # self.stage2 = nn.Sequential(
-        #     conv_dw(64, 128, 2),  # 43 + 16 = 59
-        #     conv_dw(128, 128, 1),  # 59 + 32 = 91
-        #     conv_dw(128, 128, 1),  # 91 + 32 = 123
-        #     conv_dw(128, 128, 1),  # 123 + 32 = 155
-        #     conv_dw(128, 128, 1),  # 155 + 32 = 187
-        #     conv_dw(128, 128, 1),  # 187 + 32 = 219
-        # )
-        # self.stage3 = nn.Sequential(
-        #     conv_dw(128, 256, 2),  # 219 +3 2 = 241
-        #     conv_dw(256, 256, 1),  # 241 + 64 = 301
-        # )
+        self.stage2 = nn.Sequential(
+            conv_dw(64, 128, 2),  # 43 + 16 = 59
+            conv_dw(128, 128, 1),  # 59 + 32 = 91
+            conv_dw(128, 128, 1),  # 91 + 32 = 123
+            conv_dw(128, 128, 1),  # 123 + 32 = 155
+            conv_dw(128, 128, 1),  # 155 + 32 = 187
+            conv_dw(128, 128, 1),  # 187 + 32 = 219
+        )
+        self.stage3 = nn.Sequential(
+            conv_dw(128, 256, 2),  # 219 +3 2 = 241
+            conv_dw(256, 256, 1),  # 241 + 64 = 301
+        )
 
     def forward(self, x):
         stage1 = self.stage1(x)
-        # stage2 = self.stage2(stage1)
-        # stage3 = self.stage3(stage2)
-        return stage1
-        # return stage1, stage2, stage3
-        # return {'stage1': stage1, 'stage2': stage2, 'stage3': stage3}
+        stage2 = self.stage2(stage1)
+        stage3 = self.stage3(stage2)
+        return stage1, stage2, stage3
