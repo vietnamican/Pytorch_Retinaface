@@ -128,13 +128,16 @@ class FPN(nn.Module):
 class MobileNetV1(nn.Module):
     def __init__(self):
         super(MobileNetV1, self).__init__()
+        base = 16
         self.stage1 = nn.Sequential(
-            conv_bn(3, 8, 2, leaky=0.1),    # 3
-            conv_dw(8, 16, 1),   # 7
-            conv_dw(16, 32, 2),  # 11
-            conv_dw(32, 32, 1),  # 19
-            conv_dw(32, 64, 2),  # 27
-            conv_dw(64, 64, 1),  # 43
+            conv_bn(3, base, 2, leaky=0.1),
+            conv_dw(base, base*2, 1),
+            conv_dw(base*2, base*2, 2),
+            conv_dw(base*2, base*2, 1),
+            conv_dw(base*2, base*4, 2),
+            conv_dw(base*4, base*4, 1),
+            conv_dw(base*4, base*4, 1),
+            conv_dw(base*4, base*4, 1),
         )
         # self.stage2 = nn.Sequential(
         #     conv_dw(64, 128, 2),  # 43 + 16 = 59
