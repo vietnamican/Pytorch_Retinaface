@@ -15,8 +15,7 @@ from .base import Base
 class ClassHead(Base):
     def __init__(self,inchannels=512,num_anchors=3):
         super(ClassHead,self).__init__()
-        self.num_anchors = num_anchors
-        self.conv1x1 = nn.Conv2d(inchannels,self.num_anchors*2,kernel_size=(1,1),stride=1,padding=0)
+        self.conv1x1 = nn.Conv2d(inchannels,num_anchors*2,kernel_size=(1,1),stride=1,padding=0)
 
     def forward(self,x):
         out = self.conv1x1(x)
@@ -55,16 +54,16 @@ class RetinaFace(Base):
         out_channels = cfg['out_channel']
         # self.fpn = FPN(in_channels_list,out_channels)
         self.ssh1 = SSH(in_channels_list[0], out_channels)
-        self.ssh2 = SSH(in_channels_list[1], out_channels)
-        self.ssh3 = SSH(in_channels_list[2], out_channels)
+        # self.ssh2 = SSH(in_channels_list[1], out_channels)
+        # self.ssh3 = SSH(in_channels_list[2], out_channels)
         # self.ssh1 = SSH(out_channels, out_channels)
         # self.ssh2 = SSH(out_channels, out_channels)
         # self.ssh3 = SSH(out_channels, out_channels)
 
-        self.ClassHead = self._make_class_head(fpn_num=3, inchannels=cfg['out_channel'])
-        self.BboxHead = self._make_bbox_head(fpn_num=3, inchannels=cfg['out_channel'])
+        self.ClassHead = self._make_class_head(fpn_num=1, inchannels=cfg['out_channel'])
+        self.BboxHead = self._make_bbox_head(fpn_num=1, inchannels=cfg['out_channel'])
 
-    def _make_class_head(self,fpn_num=3,inchannels=64,anchor_num=[2, 1, 1]):
+    def _make_class_head(self,fpn_num=3,inchannels=64,anchor_num=[6]):
         classhead = nn.ModuleList()
         for i in range(fpn_num):
             classhead.append(ClassHead(inchannels,anchor_num[i]))
@@ -72,7 +71,7 @@ class RetinaFace(Base):
             return classhead[0]
         return classhead
     
-    def _make_bbox_head(self,fpn_num=3,inchannels=64,anchor_num=[2, 1, 1]):
+    def _make_bbox_head(self,fpn_num=3,inchannels=64,anchor_num=[6]):
         bboxhead = nn.ModuleList()
         for i in range(fpn_num):
             bboxhead.append(BboxHead(inchannels,anchor_num[i]))
@@ -89,26 +88,24 @@ class RetinaFace(Base):
 
         # SSH
         feature1 = self.ssh1(out[0])
-        feature2 = self.ssh2(out[1])
-        feature3 = self.ssh3(out[2])
         # feature1 = self.ssh1(fpn[0])
         # feature2 = self.ssh2(fpn[1])
         # feature3 = self.ssh3(fpn[2])
-
-        bbox_regressions = torch.cat([
-            self.BboxHead[0](feature1),
-            self.BboxHead[1](feature2),
-            self.BboxHead[2](feature3)
-            ], dim=1)
-        classifications = torch.cat([
-            self.ClassHead[0](feature1),
-            self.ClassHead[1](feature2),
-            self.ClassHead[2](feature3)
-            ], dim=1)
+        bbox_regressions = self.BboxHead(feature1)
+        classifications = self.ClassHead(feature1)
+        # bbox_regressions = torch.cat([
+        #     self.BboxHead[0](feature1),
+        #     self.BboxHead[1](feature2),
+        #     self.BboxHead[2](feature3)
+        #     ], dim=1)
+        # classifications = torch.cat([
+        #     self.ClassHead[0](feature1),
+        #     self.ClassHead[1](feature2),
+        #     self.ClassHead[2](feature3)
+        #     ], dim=1)
 
         if self.phase == 'train':
             output = (bbox_regressions, classifications)
         else:
             output = (bbox_regressions, F.softmax(classifications, dim=-1))
         return output
-

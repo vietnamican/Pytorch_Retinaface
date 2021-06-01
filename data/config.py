@@ -3,9 +3,9 @@
 cfg_mnet = {
     'name': 'mobilenet0.25',
     # prior
-    'min_sizes': [[16, 32], [32], [64]],
-    'ratios': [1, 1.5, 2], # width/height
-    'steps': [8, 16, 32],
+    'min_sizes': [[16, 32]],
+    'ratios': [1], # width/height
+    'steps': [8],
     # 'stride_prior': 1
     'variance': [0.1, 0.2],
     'clip': False,

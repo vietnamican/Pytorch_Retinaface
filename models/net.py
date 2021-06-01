@@ -42,7 +42,7 @@ def conv_dw(inp, oup, stride, leaky=0.1):
     )
 
 
-class ComplicateSSH(nn.Module):
+class ComplicatedSSH(nn.Module):
     def __init__(self, in_channel, out_channel):
         super().__init__()
         assert out_channel % 4 == 0
@@ -148,8 +148,6 @@ class MobileNetV1(nn.Module):
             conv_dw(128, 256, 2),  # 219 +3 2 = 241
             conv_dw(256, 256, 1),  # 241 + 64 = 301
         )
-        self.avg = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(256, 1000)
 
     def forward(self, x):
         stage1 = self.stage1(x)
