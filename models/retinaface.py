@@ -48,13 +48,19 @@ class RetinaFace(Base):
             self.body = MobileNetV1()
         in_channels_stage = cfg['in_channel']
         in_channels_list = [
+            in_channels_stage * 2,
             in_channels_stage * 4,
             in_channels_stage * 8,
-            in_channels_stage * 16,
         ]
         out_channels = cfg['out_channel']
         self.fpn = FPN(in_channels_list,out_channels)
         self.ssh1 = SSH(out_channels, out_channels)
+        self.ssh_eyegaze = nn.Sequential(
+            SSH(in_channels_list[2], out_channels*2),
+            nn.Conv2d(out_channels*2, 3, 1),
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten()
+        )
 
         self.ClassHead = self._make_class_head(fpn_num=1, inchannels=cfg['out_channel'])
         self.BboxHead = self._make_bbox_head(fpn_num=1, inchannels=cfg['out_channel'])
@@ -85,12 +91,15 @@ class RetinaFace(Base):
         # SSH
         feature = self.ssh1(fpn)
 
+        # SSH eyegaze
+        feature_eyegaze = self.ssh_eyegaze(out[2])
+
         bbox_regressions = self.BboxHead(feature)
         classifications = self.ClassHead(feature)
 
         if self.phase == 'train':
-            output = (bbox_regressions, classifications)
+            output = (bbox_regressions, classifications), feature_eyegaze 
         else:
-            output = (bbox_regressions, F.softmax(classifications, dim=-1))
+            output = (bbox_regressions, F.softmax(classifications, dim=-1)), feature_eyegaze
         return output
 

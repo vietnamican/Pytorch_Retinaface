@@ -11,7 +11,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 
 # from data import WiderFaceDetection, detection_collate, preproc, cfg_mnet, cfg_re50
-from data import LaPa, detection_collate, preproc, cfg_mnet, cfg_re50, ConcatDataset
+from data import LaPa, detection_collate, preproc, cfg_mnet, cfg_re50, ConcatDataset, EyeGaze
 from layers.modules import MultiBoxLoss
 from layers.functions.prior_box import PriorBox
 import time
@@ -38,7 +38,7 @@ parser.add_argument('--weight_decay', default=5e-4,
                     type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='test_logs',
+parser.add_argument('--save_folder', default='fusion_logs',
                     help='Location to save checkpoint models')
 
 args = parser.parse_args()
@@ -136,34 +136,34 @@ def load_data(args, val_only=False):
     num_workers = args.num_workers
     
     lapatraindataset = LaPa(train_image_dir, train_label_dir,
-                            'train', augment=True, preload=True, to_gray=False)
+                            'train', augment=True, preload=False, to_gray=False)
     irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
-                          'train', augment=True, preload=True, to_gray=False)
+                          'train', augment=True, preload=False, to_gray=False)
     traindataset = ConcatDataset(lapatraindataset, irtraindataset)
-    print(len(traindataset))
-    print(len(irtraindataset))
-    print(len(lapatraindataset))
+    lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
+                          augment=True, preload=False, to_gray=False)
+    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=False, to_gray=False)
+    valdataset = ConcatDataset(lapavaldataset, irvaldataset)
+    
+    eyegaze_dir = '../datasets/eyegazedata'
+    eyegazetraindataset = EyeGaze(eyegaze_dir, set_type='train', target_size=96, augment=True, preload=True, to_gray=False)
+    eyegazevaldataset = EyeGaze(eyegaze_dir, set_type='val', target_size=96, augment=True, preload=True, to_gray=False)
+
+    traindataset = ConcatDataset(traindataset, eyegazetraindataset, is_return_dataset_index=True)
+    valdataset = ConcatDataset(valdataset, eyegazevaldataset, is_return_dataset_index=True)
     trainloader = DataLoader(traindataset, batch_size=train_batch_size,
                              pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
-    lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
-                          augment=True, preload=True, to_gray=False)
-    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=True, to_gray=False)
-    valdataset = ConcatDataset(lapavaldataset, irvaldataset)
-    print(len(valdataset))
-    print(len(irvaldataset))
-    print(len(lapavaldataset))
     valloader = DataLoader(valdataset, batch_size=val_batch_size,
                            pin_memory=True, num_workers=num_workers, collate_fn=detection_collate)
-    if not val_only:
-        return traindataset, trainloader, valdataset, valloader
-    return valdataset, valloader
+
+    return traindataset, trainloader, valdataset, valloader
 
 
 if __name__ == '__main__':
-    _, trainloader, _, valloader = load_data(args)
-    num_training_steps = len(trainloader)
-    net = Model(cfg=cfg, args=args, num_training_steps=num_training_steps)
+    # _, trainloader, _, valloader = load_data(args)
+    # num_training_steps = len(trainloader)
+    net = Model(cfg=cfg, args=args)
     print("Printing net...")
     print(net)
     trainer = load_trainer(args.save_folder, 'gpu', cfg['max_epochs'])
-    trainer.fit(net, trainloader, valloader)
+    trainer.fit(net)

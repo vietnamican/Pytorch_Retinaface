@@ -159,11 +159,6 @@ def detection_collate(batch):
         if image is not None:
             imgs.append(image)
             targets.append(target)
-
-                # elif isinstance(tup, type(np.empty(0))):
-                #     annos = torch.from_numpy(tup).float()
-                #     targets.append(annos)
-
     return (torch.stack(imgs, 0), targets)
 
 

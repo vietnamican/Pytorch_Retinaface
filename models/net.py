@@ -92,8 +92,9 @@ class FPN(nn.Module):
         self.merge2 = conv_bn(out_channels, out_channels, leaky=leaky)
 
     def forward(self, input):
+        
         # names = list(input.keys())
-        input = list(input.values())
+        # input = list(input.values())
 
         output1 = self.output1(input[0])
         output2 = self.output2(input[1])
@@ -109,8 +110,8 @@ class FPN(nn.Module):
         output1 = output1 + up2
         output1 = self.merge1(output1)
 
-        out = [output1, output2, output3]
-        return out
+        # out = [output1, output2, output3]
+        return output1
 
 
 class MobileNetV1(nn.Module):
@@ -143,4 +144,5 @@ class MobileNetV1(nn.Module):
         stage1 = self.stage1(x)
         stage2 = self.stage2(stage1)
         stage3 = self.stage3(stage2)
-        return {'stage1': stage1, 'stage2': stage2, 'stage3': stage3}
+        return stage1, stage2, stage3
+        # return {'stage1': stage1, 'stage2': stage2, 'stage3': stage3}
