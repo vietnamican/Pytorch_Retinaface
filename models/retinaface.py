@@ -8,7 +8,6 @@ from collections import OrderedDict
 from models.net import MobileNetV1 as MobileNetV1
 from models.net import FPN as FPN
 from models.net import SimpleSSH as SSH
-from models.net import Aggregate as Aggregate
 from .base import Base
 
 
@@ -54,8 +53,7 @@ class RetinaFace(Base):
         ]
         out_channels = cfg['out_channel']
         # self.fpn = FPN(in_channels_list,out_channels)
-        self.aggregate = Aggregate(in_channels_list, out_channels)
-        self.ssh1 = SSH(out_channels, out_channels)
+        self.ssh1 = SSH(in_channels_list[0], out_channels)
         # self.ssh2 = SSH(in_channels_list[1], out_channels)
         # self.ssh3 = SSH(in_channels_list[2], out_channels)
         # self.ssh1 = SSH(out_channels, out_channels)
@@ -85,8 +83,8 @@ class RetinaFace(Base):
     def forward(self,inputs):
         out = self.body(inputs)
 
-        # Aggregate
-        out = self.aggregate(out)
+        # FPN
+        # fpn = self.fpn(out)
 
         # SSH
         feature1 = self.ssh1(out)
