@@ -65,8 +65,7 @@ def detect_iris(img, net):
     loc, conf = net(img)  # forward pass
     loc = loc.squeeze(0).data.cpu()
     conf = conf.squeeze(0).data.cpu().numpy()
-    # split_index = loc.shape[0] // 2
-    split_index = 288
+    split_index = loc.shape[0] // 2
     loc_left, loc_right = loc[:split_index], loc[-split_index:]
     conf_left, conf_right = conf[:split_index], conf[-split_index:]
     return calculate_box(loc_left, conf_left), calculate_box(loc_right, conf_right)
