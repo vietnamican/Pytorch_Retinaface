@@ -48,26 +48,29 @@ transform = A.Compose(
 priorbox = PriorBox(cfg, image_size=(96, 96))
 priors = priorbox.forward()
 priors = priors.to(device)
-prior_data = priors.data
+prior_data = priors.data.cpu()
+
+def calculate_box(loc, conf):
+    scores = conf[:, 1]
+    ind = scores.argmax()
+    boxes = decode(loc, prior_data, cfg['variance'])
+    scores = scores[ind:ind+1]
+    boxes = boxes[ind:ind+1]
+    dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
+    return dets
 
 def detect_iris(img, net):
     img = transform(image=img)['image'].unsqueeze(0)
     img = img.to(device)
-
     loc, conf = net(img)  # forward pass
+    loc = loc.squeeze(0).data.cpu()
+    conf = conf.squeeze(0).data.cpu().numpy()
+    # split_index = loc.shape[0] // 2
+    split_index = 288
+    loc_left, loc_right = loc[:split_index], loc[-split_index:]
+    conf_left, conf_right = conf[:split_index], conf[-split_index:]
+    return calculate_box(loc_left, conf_left), calculate_box(loc_right, conf_right)
 
-    
-    scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
-    ind = scores.argmax()
-
-    boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
-    boxes = boxes.cpu().numpy()
-    scores = scores[ind:ind+1]
-    boxes = boxes[ind:ind+1]
-
-    dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
-
-    return dets
 
 def filter_iris_box(dets, threshold):
     widths = dets[:, 2] - dets[:, 0]
@@ -97,20 +100,28 @@ if __name__ == '__main__':
 
     image_path = 'sample.jpeg'
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    image = np.concatenate([image, image], axis=0)
-    print(image.shape)
-#     dets = detect_iris(image, model)
+    image_fusion = np.concatenate([image, image], axis=0)
+    left_dets, right_dets = detect_iris(image_fusion, model)
 
-#     # convert ratio to pixel
-#     height, width = image.shape[:2]
-#     dets[:, (0, 2)]*= width
-#     dets[:, (1, 3)]*= height
+    # convert ratio to pixel
+    height, width = image.shape[:2]
+    left_dets[:, (0, 2)]*= width
+    left_dets[:, (1, 3)]*= height
+    right_dets[:, (0, 2)]*= width
+    right_dets[:, (1, 3)]*= height
 
-#     dets = filter_conf(dets, conf_threshold)
-#     dets = filter_iris_box(dets, width_height_threshold)
-#     paint_box(image, dets)
-#     cv2.imwrite('result.jpg', image)
-#     # print(dets)
+    dets = filter_conf(left_dets, conf_threshold)
+    dets = filter_iris_box(dets, width_height_threshold)
+    image_copy = image.copy()
+    paint_box(image_copy, dets)
+    cv2.imwrite('result_left.jpg', image_copy)
+
+    dets = filter_conf(right_dets, conf_threshold)
+    dets = filter_iris_box(dets, width_height_threshold)
+    image_copy = image.copy()
+    paint_box(image_copy, dets)
+    cv2.imwrite('result_right.jpg', image_copy)
+    # print(dets)
 
 
 # # summary(model, (2, 3, 96, 96))
