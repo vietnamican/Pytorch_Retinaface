@@ -136,22 +136,23 @@ class MobileNetV1(nn.Module):
             conv_dw(32, 64, 2),  # 27
             conv_dw(64, 64, 1),  # 43
         )
-        self.stage2 = nn.Sequential(
-            conv_dw(64, 128, 2),  # 43 + 16 = 59
-            conv_dw(128, 128, 1),  # 59 + 32 = 91
-            conv_dw(128, 128, 1),  # 91 + 32 = 123
-            conv_dw(128, 128, 1),  # 123 + 32 = 155
-            conv_dw(128, 128, 1),  # 155 + 32 = 187
-            conv_dw(128, 128, 1),  # 187 + 32 = 219
-        )
-        self.stage3 = nn.Sequential(
-            conv_dw(128, 256, 2),  # 219 +3 2 = 241
-            conv_dw(256, 256, 1),  # 241 + 64 = 301
-        )
+        # self.stage2 = nn.Sequential(
+        #     conv_dw(64, 128, 2),  # 43 + 16 = 59
+        #     conv_dw(128, 128, 1),  # 59 + 32 = 91
+        #     conv_dw(128, 128, 1),  # 91 + 32 = 123
+        #     conv_dw(128, 128, 1),  # 123 + 32 = 155
+        #     conv_dw(128, 128, 1),  # 155 + 32 = 187
+        #     conv_dw(128, 128, 1),  # 187 + 32 = 219
+        # )
+        # self.stage3 = nn.Sequential(
+        #     conv_dw(128, 256, 2),  # 219 +3 2 = 241
+        #     conv_dw(256, 256, 1),  # 241 + 64 = 301
+        # )
 
     def forward(self, x):
         stage1 = self.stage1(x)
-        stage2 = self.stage2(stage1)
-        stage3 = self.stage3(stage2)
-        return stage1, stage2, stage3
+        # stage2 = self.stage2(stage1)
+        # stage3 = self.stage3(stage2)
+        return stage1
+        # return stage1, stage2, stage3
         # return {'stage1': stage1, 'stage2': stage2, 'stage3': stage3}
