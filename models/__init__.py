@@ -1,1 +1,1 @@
-from .model import RetinaFace
+from .retinaface import RetinaFace

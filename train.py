@@ -25,9 +25,9 @@ pl.seed_everything(42)
 parser = argparse.ArgumentParser(description='Retinaface Training')
 parser.add_argument('--network', default='mobile0.25',
                     help='Backbone network mobile0.25 or resnet50')
-parser.add_argument('--train_batch_size', default=128,
+parser.add_argument('--train_batch_size', default=32,
                     help='Batch size for training')
-parser.add_argument('--val_batch_size', default=24,
+parser.add_argument('--val_batch_size', default=32,
                     help='Batch size for training')
 parser.add_argument('--num_workers', default=12, type=int,
                     help='Number of workers used in dataloading')
@@ -98,37 +98,21 @@ def load_trainer(logdir, device, max_epochs, checkpoint=None):
 
 
 def load_data(args, val_only=False):
-    train_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/images'
-    train_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/labels'
-    val_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/images'
-    val_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/labels'
+    train_image_dir = '../datasets/data_cleaned/train/images'
+    train_label_dir = '../datasets/data_cleaned/train/labels'
+    val_image_dir = '../datasets/data_cleaned/val/images'
+    val_label_dir = '../datasets/data_cleaned/val/labels'
 
     train_ir_image_dirs = [
-        '../datasets/ir_negpos/positive/images/out2',
-        '../datasets/ir_negpos/positive/images/out22',
-        '../datasets/ir_negpos/positive/images/out222',
-        '../datasets/ir_negpos/negative/images/out2',
-        '../datasets/ir_negpos/negative/images/out22',
-        '../datasets/ir_negpos/negative/images/out222'
+        '../datasets/ir_cleaned/images/out2',
+        '../datasets/ir_cleaned/images/out22',
+        '../datasets/ir_cleaned/images/out222',
     ]
 
     train_ir_label_dirs = [
-        '../datasets/ir_negpos/positive/labels/out2',
-        '../datasets/ir_negpos/positive/labels/out22',
-        '../datasets/ir_negpos/positive/labels/out222',
-        '../datasets/ir_negpos/negative/labels/out2',
-        '../datasets/ir_negpos/negative/labels/out22',
-        '../datasets/ir_negpos/negative/labels/out222'
-    ]
-
-    val_ir_image_dirs = [
-        '../datasets/tatden/positive/images',
-        '../datasets/tatden/negative/images',
-    ]
-
-    val_ir_label_dirs = [
-        '../datasets/tatden/positive/labels',
-        '../datasets/tatden/negative/labels',
+        '../datasets/ir_cleaned/labels/out2',
+        '../datasets/ir_cleaned/labels/out22',
+        '../datasets/ir_cleaned/labels/out222',
     ]
 
     train_batch_size = args.train_batch_size
@@ -147,10 +131,8 @@ def load_data(args, val_only=False):
                              pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
     lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
                           augment=True, preload=True, to_gray=False)
-    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=True, to_gray=False)
-    valdataset = ConcatDataset(lapavaldataset, irvaldataset)
+    valdataset = lapavaldataset
     print(len(valdataset))
-    print(len(irvaldataset))
     print(len(lapavaldataset))
     valloader = DataLoader(valdataset, batch_size=val_batch_size,
                            pin_memory=True, num_workers=num_workers, collate_fn=detection_collate)

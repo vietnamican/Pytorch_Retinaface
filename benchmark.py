@@ -143,7 +143,8 @@ if __name__ == '__main__':
     # net_path = os.path.join('weights_negpos', 'mobilenet0.25_Final.pth')
     # net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
     # net_path = 'distill_logs/version_0/checkpoints/checkpoint-epoch=52-val_loss=7.4488.ckpt'
-    net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
+    # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
+    net_path = 'test_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=4.4232.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, device)
     # net = net.cuda()
@@ -158,9 +159,9 @@ if __name__ == '__main__':
     conf_threshold = 0.80625
     width_height_threshold = 0.4875 
 
-    rgb_image_dir = os.path.join('../datasets', 'eyestate_label', 'outputir', 'Open')
-    out_open_image_dir = os.path.join('../datasets', 'out', 'outputir', 'open_open')
-    out_close_image_dir = os.path.join('../datasets', 'out', 'outputir', 'open_close')
+    rgb_image_dir = os.path.join('../datasets', 'eyestate_label', 'outputrgb', 'Open')
+    out_open_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'open_open')
+    out_close_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'open_close')
     if not os.path.isdir(out_open_image_dir):
         os.makedirs(out_open_image_dir)
     if not os.path.isdir(out_close_image_dir):
@@ -191,9 +192,9 @@ if __name__ == '__main__':
             open_close += 1
             # paint_bbox(image, dets)
 
-    rgb_image_dir = os.path.join('../datasets', 'eyestate_label', 'outputir', 'Close')
-    out_open_image_dir = os.path.join('../datasets', 'out', 'outputir', 'close_open')
-    out_close_image_dir = os.path.join('../datasets', 'out', 'outputir', 'close_close')
+    rgb_image_dir = os.path.join('../datasets', 'eyestate_label', 'outputrgb', 'Close')
+    out_open_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'close_open')
+    out_close_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'close_close')
     if not os.path.isdir(out_open_image_dir):
         os.makedirs(out_open_image_dir)
     if not os.path.isdir(out_close_image_dir):
