@@ -212,13 +212,14 @@ if __name__ == '__main__':
     landmark_model = load_heatmap_model()
     cfg = cfg_mnet
     # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
-    net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
+    # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
+    net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=249-val_loss=5.6218.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
     net.eval()
-    cap = cv2.VideoCapture('../video/output_tatden5.mkv')
+    cap = cv2.VideoCapture('../video/video7_sym_lowlight_nomask.avi')
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('../video/output_tatden5_det_lapa_ir_2.avi', fourcc, 20.0, (1280, 720))
+    out = cv2.VideoWriter('../video/video7_sym_lowlight_nomask_main.avi', fourcc, 20.0, (1280, 720))
 
     # i = 0
     conf_threshold = 0.80625
