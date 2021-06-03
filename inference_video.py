@@ -76,7 +76,6 @@ def load_model(model, pretrained_path, load_to_cpu):
     else:
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
-    # state_dict = pretrained_dict['state_dict']
     state_dict = pretrained_dict
     print(state_dict.keys())
     model.migrate(state_dict, force=True)
@@ -224,14 +223,14 @@ if __name__ == '__main__':
     # net_path = 'weight/weights_without_prepoc/mobilenet0.25_Final.pth'
     # net_path = 'logs/negpos_cleaned/checkpoints/checkpoint-epoch=249-val_loss=3.0892.ckpt'
     # net_path = 'logs/version_0/checkpoints/checkpoint-epoch=249-val_loss=4.3475.ckpt'
-    net_path = '../mobilenet0.25_Final.pth'
+    net_path = 'logs/fpn_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=4.4232.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     print(net)
     net = load_model(net, net_path, True)
     net.eval()
     cap = cv2.VideoCapture('../video/video7_sym_lowlight_nomask.avi')
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('../video/video7_sym_lowlight_nomask_main_weights_negpos.avi', fourcc, 20.0, (1280, 720))
+    out = cv2.VideoWriter('../video/video7_sym_lowlight_nomask_main_fpn.avi', fourcc, 20.0, (1280, 720))
 
     # i = 0
     conf_threshold = 0.80625
