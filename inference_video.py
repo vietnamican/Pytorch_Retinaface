@@ -207,17 +207,20 @@ if __name__ == '__main__':
     cfg = cfg_mnet
     # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
     # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
-    net_path = 'slim_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.8261.ckpt'
+    # net_path = 'slim_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.8261.ckpt'
+    net_path = 'checkpoint-epoch=79-val_loss=4.942.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
     net.eval()
-    cap = cv2.VideoCapture('../video/output_tatden5.mkv')
+    cap = cv2.VideoCapture('../video/output_tatden.mkv')
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('../video/output_tatden5_det_lapa_ir_2.avi', fourcc, 20.0, (1280, 720))
+    out = cv2.VideoWriter('../video/output_tatden_det_lapa_ir_distill.avi', fourcc, 20.0, (1280, 720))
 
     # i = 0
     conf_threshold = 0.80625
     width_height_threshold = 0.4875
+    # conf_threshold = 0.6
+    # width_height_threshold = 0.6
 
     while(cap.isOpened()):
         ret, frame = cap.read()
