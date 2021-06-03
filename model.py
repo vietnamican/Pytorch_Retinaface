@@ -148,15 +148,4 @@ class Distill(Base):
                               momentum=momentum, weight_decay=weight_decay)
         lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[decay1, decay2], gamma=0.1)
         return [optimizer], [lr_scheduler]
-
-    # def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu, using_native_amp, using_lbfgs):
-    #      # warm up lr
-    #     if self.trainer.global_step < self.total_warmup_steps:
-    #         lr_scale = min(1., float(self.trainer.global_step + 1.) / self.total_warmup_steps)
-    #         for pg in optimizer.param_groups:
-    #             pg['lr'] = lr_scale * self.args.lr
-
-    #     # update params
-    #     optimizer.step(closure=optimizer_closure)
-        
         
