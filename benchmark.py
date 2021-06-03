@@ -55,6 +55,11 @@ def load_model(model, pretrained_path, load_to_cpu):
     # state_dict = model.filter_state_dict_with_prefix(state_dict, 'student_model.model', True)
     print(state_dict.keys())
     model.migrate(state_dict, force=True)
+
+    params = list(model.parameters())
+    for i in range(len(params)):
+        params[i].data = torch.round(params[i].data*10**4) / 10**4
+
     return model
 
 # def load_model(model, pretrained_path, device='cuda'):
@@ -154,6 +159,7 @@ if __name__ == '__main__':
     # net_path = 'distill_logs/version_0/checkpoints/checkpoint-epoch=52-val_loss=7.4488.ckpt'
     # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
     net_path = 'slim_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.8261.ckpt'
+    net_path = 'checkpoint-epoch=79-val_loss=4.942.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, device)
     # net = net.cuda()
@@ -166,7 +172,7 @@ if __name__ == '__main__':
     close_open = 0
     close_close = 0
     conf_threshold = 0.80625
-    width_height_threshold = 0.4875 
+    width_height_threshold = 0.4875
 
     rgb_image_dir = os.path.join('../datasets', 'eyestate_label', 'outputrgb', 'Open')
     out_open_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'open_open')

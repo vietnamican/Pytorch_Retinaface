@@ -136,7 +136,8 @@ if __name__ == '__main__':
     # net_path = os.path.join('weight', 'weights', 'mobilenet0.25_epoch_245.pth')
     # net_path = os.path.join('weight', 'weights', 'mobilenet0.25_Final.pth')
     # net_path = 'test_logs/version_0/checkpoints/checkpoint-epoch=239-val_loss=5.3665.ckpt'
-    net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
+    # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
+    net_path = 'checkpoint-epoch=79-val_loss=4.942.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, device)
     net.eval()
