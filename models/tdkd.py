@@ -29,47 +29,23 @@ class TDKD(nn.Module):
 		super(TDKD, self).__init__()
 		self.feat_loss = FeatLoss()
 		self.prob_loss = ProbLoss()
-		self.fdm = FeatureDistillMask(2, 3, 2)
 		self.stage = 1
-		self.adpt_loc_list = [Adapt() for i in range(self.stage)]
-		self.adpt_cls_list = [Adapt() for i in range(self.stage)]
 
 	def forward(self, stu_output, tea_output, priors_by_layer, priors, targets, pos, neg):
 
-		_, _, stu_loc_feat_list, stu_cls_feat_list, stu_loc_list, stu_cls_list, stu_prob = stu_output
-		_, tea_prob, tea_loc_feat_list, tea_cls_feat_list, tea_loc_list, tea_cls_list = tea_output
-
-		for i in range(self.stage):
-			adap_loc = self.adpt_loc_list[i].cuda()
-			stu_loc_feat_list[i] = adap_loc(stu_loc_feat_list[i])
-
-			adap_cls = self.adpt_cls_list[i].cuda()
-			stu_cls_feat_list[i] = adap_cls(stu_cls_feat_list[i])
-
-
+		_, _, stu_feat, stu_prob  = stu_output
+		_, _, tea_feat, tea_prob  = tea_output
 	
-		loc_list = []
-		cls_list = []
 		num = int(pos.shape[0])
-		#print("pos.shape=", pos.shape)
 
 		pos_part1 = pos[:, :]
-
 		cls_part1 = (neg[:, :] + pos_part1) > 0
-
-		loc_list.append(pos_part1.view(num, -1, 2).sum(dim = 2) > 0)
-
-		cls_list.append(cls_part1.view(num, -1, 2).sum(dim = 2) > 0)
+		loc_list = pos_part1.view(num, -1, 2).sum(dim = 2) > 0
+		cls_list = cls_part1.view(num, -1, 2).sum(dim = 2) > 0
 
 
-		#loc_mask_list, cls_mask_list = self.fdm.run(stu_loc_list, stu_cls_list, priors_by_layer, priors, targets)
-		feat_loss = self.feat_loss(stu_loc_feat_list, stu_cls_feat_list, tea_loc_feat_list, tea_cls_feat_list, loc_list, cls_list)
-		#print("feat_loss=", feat_loss)
-
-		#for i in range(self.stage):
-		#	print("loc_mask_list[i].shape=", loc_mask_list[i].shape)
-		#	print("loc_list[i].shape=", loc_list[i].shape)
+		feat_loss = self.feat_loss(stu_feat, tea_feat, loc_list, cls_list)
 		prob_loss = self.prob_loss(stu_prob, tea_prob)
-		#exit()
+
 		return feat_loss, prob_loss
 

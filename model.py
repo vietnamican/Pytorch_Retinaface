@@ -69,14 +69,14 @@ class Model(Base):
         optimizer.step(closure=optimizer_closure)
 
 class ModelDistill(Model):
-    def __init__(self, cfg=None, args=None, num_training_steps=10 ,phase='train'):
+    def __init__(self, model=None, cfg=None, args=None, num_training_steps=10 ,phase='train'):
         super().__init__(cfg=cfg, args=args, num_training_steps=num_training_steps, phase=phase)
-        self.model = RetinaFaceDistill(cfg, phase)
+        self.model = model(cfg, phase)
 
-class ModelWidth(Model):
-    def __init__(self, cfg=None, args=None, num_training_steps=10 ,phase='train'):
-        super().__init__(cfg=cfg, args=args, num_training_steps=num_training_steps, phase=phase)
-        self.model = RetinaFaceWidth(cfg, phase)
+# class ModelWidth(Model):
+#     def __init__(self, cfg=None, args=None, num_training_steps=10 ,phase='train'):
+#         super().__init__(cfg=cfg, args=args, num_training_steps=num_training_steps, phase=phase)
+#         self.model = RetinaFaceWidth(cfg, phase)
 
 class Distill(Base):
     def __init__(self, teacher_model, student_model, cfg=None, args=None):
@@ -96,6 +96,7 @@ class Distill(Base):
                 self.priors = self.priors.cuda()
             else:
                 self.priors, self.priors_by_layer = prior_box.forward()
+        self.freeze_with_prefix('teacher_model')
 
     def training_step(self, batch, batch_idx):
         images, targets = batch
@@ -108,10 +109,12 @@ class Distill(Base):
         scale = loss_l.detach() / feat_loss.detach()
         d_prob = 50
 
-        loss = self.cfg['loc_weight'] * loss_l + loss_c + d_feat * scale * feat_loss + d_prob * prob_loss
+        loss_objective = self.cfg['loc_weight'] * loss_l + loss_c
+        loss = loss_objective + d_feat * scale * feat_loss + d_prob * prob_loss
         self.log('train_loss', loss)
-        self.log('train_loss_location', loss_c)
-        self.log('train_loss_class', loss_c)
+        self.log('train_loss_objective', loss_objective)
+        self.log('train_loss_location', loss_c, prog_bar=True)
+        self.log('train_loss_class', loss_c, prog_bar=True)
         self.log('train_loss_feature', feat_loss)
         self.log('train_loss_prob', prob_loss)
         return loss
@@ -127,8 +130,10 @@ class Distill(Base):
         scale = loss_l.detach() / feat_loss.detach()
         d_prob = 50
 
-        loss = self.cfg['loc_weight'] * loss_l + loss_c + d_feat * scale * feat_loss + d_prob * prob_loss
+        loss_objective = self.cfg['loc_weight'] * loss_l + loss_c
+        loss = loss_objective + d_feat * scale * feat_loss + d_prob * prob_loss
         self.log('val_loss', loss)
+        self.log('val_loss_objective', loss_objective)
         self.log('val_loss_location', loss_c)
         self.log('val_loss_class', loss_c)
         self.log('val_loss_feature', feat_loss)

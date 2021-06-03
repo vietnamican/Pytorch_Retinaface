@@ -12,23 +12,21 @@ class FeatLoss(nn.Module):
 		super(FeatLoss, self).__init__()
 
 
-	def forward(self, stu_loc_feat_list, stu_cls_feat_list, tea_loc_feat_list, tea_cls_feat_list, loc_mask_list, cls_mask_list):
+	def forward(self, stu_feat, tea_feat, loc_mask_list, cls_mask_list):
 
-		stage = len(stu_cls_feat_list)
 
 		cls_distill_loss = 0
 		loc_distill_loss = 0
 
 		#all_loc = 0
-		for i in range(stage):
-			b, c, h, w = tea_cls_feat_list[i].shape
-			mask_cls = cls_mask_list[i].unsqueeze(2).repeat(1, 1, c).permute(0, 2, 1)
-			mask_loc = loc_mask_list[i].unsqueeze(2).repeat(1, 1, c).permute(0, 2, 1)
-			N_cls = max(1, mask_cls.sum() * 2 // c) * 1.0
-			N_loc = max(1, mask_loc.sum() * 2 // c) * 1.0
-			cls_distill_loss += (torch.pow(stu_cls_feat_list[i].view(b, c, -1) - tea_cls_feat_list[i].view(b, c, -1), 2) * mask_cls.float()).sum() / N_cls
-			loc_distill_loss += (torch.pow(stu_loc_feat_list[i].view(b, c, -1) - tea_loc_feat_list[i].view(b, c, -1), 2) * mask_loc.float()).sum() / N_loc
-			#all_loc = all_loc + (torch.pow(stu_loc_feat_list[i].view(b, c, -1) - tea_loc_feat_list[i].view(b, c, -1), 2)).sum()
+		b, c, h, w = tea_feat.shape
+		mask_cls = cls_mask_list.unsqueeze(2).repeat(1, 1, c).permute(0, 2, 1)
+		mask_loc = loc_mask_list.unsqueeze(2).repeat(1, 1, c).permute(0, 2, 1)
+		N_cls = max(1, mask_cls.sum() * 2 // c) * 1.0
+		N_loc = max(1, mask_loc.sum() * 2 // c) * 1.0
+		cls_distill_loss += (torch.pow(stu_feat.view(b, c, -1) - tea_feat.view(b, c, -1), 2) * mask_cls.float()).sum() / N_cls
+		loc_distill_loss += (torch.pow(stu_feat.view(b, c, -1) - tea_feat.view(b, c, -1), 2) * mask_loc.float()).sum() / N_loc
+		#all_loc = all_loc + (torch.pow(stu_loc_feat_list[i].view(b, c, -1) - tea_loc_feat_list[i].view(b, c, -1), 2)).sum()
 
 		feat_distill_loss = cls_distill_loss + loc_distill_loss
 		return feat_distill_loss

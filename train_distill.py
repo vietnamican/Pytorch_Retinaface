@@ -17,7 +17,9 @@ from layers.functions.prior_box import PriorBox
 import time
 import datetime
 import math
-from model import Model, ModelDistill, ModelWidth, Distill
+from model import Model, ModelDistill, Distill
+from models_student import RetinaFace as StudentModel
+from models_teacher import RetinaFace as TeacherModel
 
 pl.seed_everything(42)
 # from models import RetinaFace
@@ -116,9 +118,6 @@ def load_data(args, val_only=False):
     train_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/labels'
     val_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/images'
     val_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/labels'
-    train_batch_size = args.train_batch_size
-    val_batch_size = args.val_batch_size
-    num_workers = args.num_workers
 
     train_ir_image_dirs = [
         '../datasets/ir_negpos/positive/images/out2',
@@ -148,10 +147,14 @@ def load_data(args, val_only=False):
         '../datasets/tatden/negative/labels',
     ]
 
+    train_batch_size = args.train_batch_size
+    val_batch_size = args.val_batch_size
+    num_workers = args.num_workers
+    
     lapatraindataset = LaPa(train_image_dir, train_label_dir,
-                            'train', augment=True, preload=True, to_gray=True)
+                            'train', augment=True, preload=True, to_gray=False)
     irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
-                          'train', augment=True, preload=True, to_gray=True)
+                          'train', augment=True, preload=True, to_gray=False)
     traindataset = ConcatDataset(lapatraindataset, irtraindataset)
     print(len(traindataset))
     print(len(irtraindataset))
@@ -159,8 +162,8 @@ def load_data(args, val_only=False):
     trainloader = DataLoader(traindataset, batch_size=train_batch_size,
                              pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
     lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
-                          augment=True, preload=True, to_gray=True)
-    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=True, to_gray=True)
+                          augment=True, preload=True, to_gray=False)
+    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=True, to_gray=False)
     valdataset = ConcatDataset(lapavaldataset, irvaldataset)
     print(len(valdataset))
     print(len(irvaldataset))
@@ -171,19 +174,23 @@ def load_data(args, val_only=False):
         return traindataset, trainloader, valdataset, valloader
     return valdataset, valloader
 
+    
+
 
 if __name__ == '__main__':
     _, trainloader, _, valloader = load_data(args)
     num_training_steps = len(trainloader)
-    student_net = ModelDistill(cfg=cfg, args=args, num_training_steps=num_training_steps)
-    teacher_net = ModelWidth(cfg=cfg, args=args, num_training_steps=num_training_steps, phase='distill')
-    teacher_checkpoint_path = 'training_lapa_ir_logs/mobilenet0.25_wide/checkpoints/checkpoint-epoch=249-val_loss=5.5513.ckpt'
+    student_net = ModelDistill(model=StudentModel, cfg=cfg, args=args, num_training_steps=num_training_steps, phase='distill')
+    teacher_net = ModelDistill(model=TeacherModel, cfg=cfg, args=args, num_training_steps=num_training_steps, phase='distill')
+    print(student_net)
+    print(teacher_net)
+    teacher_checkpoint_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=249-val_loss=5.6218.ckpt'
     teacher_checkpoint = torch.load(teacher_checkpoint_path, map_location=torch.device('cuda'))
     state_dict = teacher_checkpoint['state_dict']
     state_dict = teacher_net.filter_state_dict_with_prefix(state_dict, 'model', True)
     teacher_net.migrate(state_dict, force=True)
     net = Distill(teacher_model=teacher_net, student_model=student_net, cfg=cfg, args=args)
-    print("Printing net...")
-    print(net)
+    # print("Printing net...")
+    # print(net)
     trainer = load_trainer(args.save_folder, 'gpu', cfg['distill_epochs'])
     trainer.fit(net, trainloader, valloader)
