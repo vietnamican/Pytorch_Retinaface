@@ -52,13 +52,7 @@ class RetinaFace(Base):
             in_channels_stage * 8,
         ]
         out_channels = cfg['out_channel']
-        # self.fpn = FPN(in_channels_list,out_channels)
         self.ssh1 = SSH(in_channels_list[0], out_channels)
-        # self.ssh2 = SSH(in_channels_list[1], out_channels)
-        # self.ssh3 = SSH(in_channels_list[2], out_channels)
-        # self.ssh1 = SSH(out_channels, out_channels)
-        # self.ssh2 = SSH(out_channels, out_channels)
-        # self.ssh3 = SSH(out_channels, out_channels)
 
         self.ClassHead = self._make_class_head(fpn_num=1, inchannels=cfg['out_channel'], anchor_num=[2])
         self.BboxHead = self._make_bbox_head(fpn_num=1, inchannels=cfg['out_channel'], anchor_num=[2])
@@ -83,26 +77,10 @@ class RetinaFace(Base):
     def forward(self,inputs):
         out = self.body(inputs)
 
-        # FPN
-        # fpn = self.fpn(out)
-
         # SSH
         feature1 = self.ssh1(out)
-        # feature1 = self.ssh1(fpn[0])
-        # feature2 = self.ssh2(fpn[1])
-        # feature3 = self.ssh3(fpn[2])
         bbox_regressions = self.BboxHead(feature1)
         classifications = self.ClassHead(feature1)
-        # bbox_regressions = torch.cat([
-        #     self.BboxHead[0](feature1),
-        #     self.BboxHead[1](feature2),
-        #     self.BboxHead[2](feature3)
-        #     ], dim=1)
-        # classifications = torch.cat([
-        #     self.ClassHead[0](feature1),
-        #     self.ClassHead[1](feature2),
-        #     self.ClassHead[2](feature3)
-        #     ], dim=1)
 
         if self.phase == 'train':
             output = (bbox_regressions, classifications)
