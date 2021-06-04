@@ -9,7 +9,6 @@ from retinaface import RetinaFace as Detector
 import torch.nn.functional as F
 
 from data import cfg_mnet
-from models_class import IrisModel
 from models import RetinaFace
 from layers.functions.prior_box import PriorBox
 from utils.nms.py_cpu_nms import py_cpu_nms
@@ -77,6 +76,7 @@ def load_model(model, pretrained_path, load_to_cpu):
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
     state_dict = pretrained_dict['state_dict']
+    # state_dict = model.filter_state_dict_with_prefix(state_dict, 'student_model.model', True)
     model.migrate(state_dict, force=True)
     return model
 
@@ -208,13 +208,15 @@ if __name__ == '__main__':
     # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
     # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
     # net_path = 'slim_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.8261.ckpt'
-    net_path = 'checkpoint-epoch=79-val_loss=4.942.ckpt'
+    # net_path = 'checkpoint-epoch=79-val_loss=4.942.ckpt'
+    # net_path = 'logs/distill_logs/version_1/checkpoints/checkpoint-epoch=79-val_loss=6.5601.ckpt'
+    net_path = 'slim_heavy_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=3.9705.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
     net.eval()
-    cap = cv2.VideoCapture('../video/output_tatden.mkv')
+    cap = cv2.VideoCapture('../video/video7_sym_lowlight_nomask.avi')
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('../video/output_tatden_det_lapa_ir_distill.avi', fourcc, 20.0, (1280, 720))
+    out = cv2.VideoWriter('../video/video7_sym_lowlight_nomask_distill_slim.avi', fourcc, 20.0, (1280, 720))
 
     # i = 0
     conf_threshold = 0.80625
