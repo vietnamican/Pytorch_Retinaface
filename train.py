@@ -38,7 +38,7 @@ parser.add_argument('--weight_decay', default=5e-4,
                     type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='test_logs',
+parser.add_argument('--save_folder', default='logs/fpn_logs',
                     help='Location to save checkpoint models')
 
 args = parser.parse_args()
@@ -103,31 +103,16 @@ def load_data(args, val_only=False):
     val_image_dir = '../datasets/data_cleaned/val/images'
     val_label_dir = '../datasets/data_cleaned/val/labels'
 
-    train_ir_image_dirs = [
-        '../datasets/ir_cleaned/images/out2',
-        '../datasets/ir_cleaned/images/out22',
-        '../datasets/ir_cleaned/images/out222',
-    ]
-
-    train_ir_label_dirs = [
-        '../datasets/ir_cleaned/labels/out2',
-        '../datasets/ir_cleaned/labels/out22',
-        '../datasets/ir_cleaned/labels/out222',
-    ]
-
     train_batch_size = args.train_batch_size
     val_batch_size = args.val_batch_size
     num_workers = args.num_workers
     
     lapatraindataset = LaPa(train_image_dir, train_label_dir,
                             'train', augment=True, preload=True, to_gray=False)
-    irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
-                          'train', augment=True, preload=True, to_gray=False)
-    traindataset = ConcatDataset(lapatraindataset, irtraindataset)
+    traindataset = lapatraindataset
     print(len(traindataset))
-    print(len(irtraindataset))
     print(len(lapatraindataset))
-    trainloader = DataLoader(traindataset, batch_size=train_batch_size,
+    trainloader = DataLoader(lapatraindataset, batch_size=train_batch_size,
                              pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
     lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
                           augment=True, preload=True, to_gray=False)

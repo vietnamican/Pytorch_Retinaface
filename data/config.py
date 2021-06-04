@@ -12,7 +12,7 @@ cfg_mnet = {
     'loc_weight': 2.0,
     'gpu_train': True,
     'ngpu': 1,
-    'max_epochs': 100,
+    'max_epochs': 250,
     'warmup_epochs': 5,
     'decay_steps': [0.55, 0.78],
     'image_size': 96,

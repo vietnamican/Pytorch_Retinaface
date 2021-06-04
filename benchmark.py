@@ -144,7 +144,8 @@ if __name__ == '__main__':
     # net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
     # net_path = 'distill_logs/version_0/checkpoints/checkpoint-epoch=52-val_loss=7.4488.ckpt'
     # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
-    net_path = 'test_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=4.4232.ckpt'
+    # net_path = 'test_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=4.4232.ckpt'
+    net_path = 'logs/fpn_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=4.4232.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, device)
     # net = net.cuda()

@@ -76,7 +76,8 @@ def load_model(model, pretrained_path, load_to_cpu):
     else:
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
-    state_dict = pretrained_dict
+    # state_dict = pretrained_dict
+    state_dict = pretrained_dict['state_dict']
     print(state_dict.keys())
     model.migrate(state_dict, force=True)
     return model
@@ -138,11 +139,11 @@ def calculate_box(loc, conf):
     return dets
 
 def detect_iris(img, net):
-    # img = transform(img).unsqueeze(0)
-    img = np.float32(img)
-    img -= (104, 117, 123)
-    img = img.transpose(2, 0, 1)
-    img = torch.from_numpy(img).unsqueeze(0)
+    img = transform(img).unsqueeze(0)
+    # img = np.float32(img)
+    # img -= (104, 117, 123)
+    # img = img.transpose(2, 0, 1)
+    # img = torch.from_numpy(img).unsqueeze(0)
     img = img.to(device)
     loc, conf = net(img)  # forward pass
     loc = loc.squeeze(0).data.cpu()
