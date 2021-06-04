@@ -25,9 +25,9 @@ pl.seed_everything(42)
 parser = argparse.ArgumentParser(description='Retinaface Training')
 parser.add_argument('--network', default='mobile0.25',
                     help='Backbone network mobile0.25 or resnet50')
-parser.add_argument('--train_batch_size', default=128,
+parser.add_argument('--train_batch_size', default=32,
                     help='Batch size for training')
-parser.add_argument('--val_batch_size', default=24,
+parser.add_argument('--val_batch_size', default=32,
                     help='Batch size for training')
 parser.add_argument('--num_workers', default=12, type=int,
                     help='Number of workers used in dataloading')
@@ -38,7 +38,7 @@ parser.add_argument('--weight_decay', default=5e-4,
                     type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='fusion_logs',
+parser.add_argument('--save_folder', default='logs/fusion_logs',
                     help='Location to save checkpoint models')
 
 args = parser.parse_args()
@@ -96,72 +96,7 @@ def load_trainer(logdir, device, max_epochs, checkpoint=None):
 
     return trainer
 
-
-def load_data(args, val_only=False):
-    train_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/images'
-    train_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/labels'
-    val_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/images'
-    val_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/labels'
-
-    train_ir_image_dirs = [
-        '../datasets/ir_negpos/positive/images/out2',
-        '../datasets/ir_negpos/positive/images/out22',
-        '../datasets/ir_negpos/positive/images/out222',
-        '../datasets/ir_negpos/negative/images/out2',
-        '../datasets/ir_negpos/negative/images/out22',
-        '../datasets/ir_negpos/negative/images/out222'
-    ]
-
-    train_ir_label_dirs = [
-        '../datasets/ir_negpos/positive/labels/out2',
-        '../datasets/ir_negpos/positive/labels/out22',
-        '../datasets/ir_negpos/positive/labels/out222',
-        '../datasets/ir_negpos/negative/labels/out2',
-        '../datasets/ir_negpos/negative/labels/out22',
-        '../datasets/ir_negpos/negative/labels/out222'
-    ]
-
-    val_ir_image_dirs = [
-        '../datasets/tatden/positive/images',
-        '../datasets/tatden/negative/images',
-    ]
-
-    val_ir_label_dirs = [
-        '../datasets/tatden/positive/labels',
-        '../datasets/tatden/negative/labels',
-    ]
-
-    train_batch_size = args.train_batch_size
-    val_batch_size = args.val_batch_size
-    num_workers = args.num_workers
-    
-    lapatraindataset = LaPa(train_image_dir, train_label_dir,
-                            'train', augment=True, preload=False, to_gray=False)
-    irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
-                          'train', augment=True, preload=False, to_gray=False)
-    traindataset = ConcatDataset(lapatraindataset, irtraindataset)
-    lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
-                          augment=True, preload=False, to_gray=False)
-    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=False, to_gray=False)
-    valdataset = ConcatDataset(lapavaldataset, irvaldataset)
-    
-    eyegaze_dir = '../datasets/eyegazedata'
-    eyegazetraindataset = EyeGaze(eyegaze_dir, set_type='train', target_size=96, augment=True, preload=True, to_gray=False)
-    eyegazevaldataset = EyeGaze(eyegaze_dir, set_type='val', target_size=96, augment=True, preload=True, to_gray=False)
-
-    traindataset = ConcatDataset(traindataset, eyegazetraindataset, is_return_dataset_index=True)
-    valdataset = ConcatDataset(valdataset, eyegazevaldataset, is_return_dataset_index=True)
-    trainloader = DataLoader(traindataset, batch_size=train_batch_size,
-                             pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
-    valloader = DataLoader(valdataset, batch_size=val_batch_size,
-                           pin_memory=True, num_workers=num_workers, collate_fn=detection_collate)
-
-    return traindataset, trainloader, valdataset, valloader
-
-
 if __name__ == '__main__':
-    # _, trainloader, _, valloader = load_data(args)
-    # num_training_steps = len(trainloader)
     net = Model(cfg=cfg, args=args)
     print("Printing net...")
     print(net)

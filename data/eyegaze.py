@@ -103,8 +103,8 @@ class EyeGaze(Dataset):
             img = cv2.imread(self.img_paths[idx])
         h, w, _ = img.shape
         w2 = int(w / 2)
-        left_img = img[0:h, 0:w2]
-        right_img = img[0:h, w2:w]
+        left_img = img[:, :w2]
+        right_img = img[:, w2:]
         # left eye
         left_img = cv2.resize(left_img, (self.target_size, self.target_size))
         if not self.rgb:
@@ -131,6 +131,7 @@ class EyeGaze(Dataset):
             img = left_img
         else:
             img = right_img
+        img = np.concatenate([left_img, right_img], axis=1)
         img, _ = self.augment_function(img)
         return img, torch.FloatTensor(gaze)
 

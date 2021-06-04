@@ -59,7 +59,8 @@ class RetinaFace(Base):
             SSH(in_channels_list[2], out_channels*2),
             nn.Conv2d(out_channels*2, 3, 1),
             nn.AdaptiveAvgPool2d(1),
-            nn.Flatten()
+            nn.Flatten(),
+            nn.Tanh()
         )
 
         self.ClassHead = self._make_class_head(fpn_num=1, inchannels=cfg['out_channel'])

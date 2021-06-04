@@ -77,14 +77,17 @@ class Model(Base):
         lr, momentum, weight_decay = self.args.lr, self.args.momentum, self.args.weight_decay
         max_epochs = self.cfg['max_epochs']
         steps = [round(step*max_epochs) for step in self.cfg['decay_steps']]
+        
         shared_parameters = list(self.model.body.parameters())
         eyestate_paramters = list(self.model.fpn.parameters()) + list(self.model.ssh1.parameters(
         )) + list(self.model.ClassHead.parameters()) + list(self.model.BboxHead.parameters())
         eyegaze_paramters = list(self.model.ssh_eyegaze.parameters())
+
         eyestate_optimizer = optim.SGD(shared_parameters + eyestate_paramters, lr=lr,
                                        momentum=momentum, weight_decay=weight_decay)
         eyegaze_optimizer = optim.SGD(shared_parameters + eyegaze_paramters, lr=lr*0.01,
                                       momentum=momentum, weight_decay=weight_decay)
+                                      
         eyestate_lr_scheduler = optim.lr_scheduler.MultiStepLR(
             eyestate_optimizer, milestones=steps, gamma=0.1)
         eyegaze_lr_scheduler = optim.lr_scheduler.MultiStepLR(
@@ -105,30 +108,11 @@ class Model(Base):
     def train_dataloader(self):
         train_batch_size = self.args.train_batch_size
         num_workers = self.args.num_workers
-        train_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/images'
-        train_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/labels'
-        train_ir_image_dirs = [
-            '../datasets/ir_negpos/positive/images/out2',
-            '../datasets/ir_negpos/positive/images/out22',
-            '../datasets/ir_negpos/positive/images/out222',
-            '../datasets/ir_negpos/negative/images/out2',
-            '../datasets/ir_negpos/negative/images/out22',
-            '../datasets/ir_negpos/negative/images/out222'
-        ]
-
-        train_ir_label_dirs = [
-            '../datasets/ir_negpos/positive/labels/out2',
-            '../datasets/ir_negpos/positive/labels/out22',
-            '../datasets/ir_negpos/positive/labels/out222',
-            '../datasets/ir_negpos/negative/labels/out2',
-            '../datasets/ir_negpos/negative/labels/out22',
-            '../datasets/ir_negpos/negative/labels/out222'
-        ]
+        train_image_dir = '../datasets/data_cleaned/train/images'
+        train_label_dir = '../datasets/data_cleaned/train/labels'
         lapatraindataset = LaPa(train_image_dir, train_label_dir,
                                 'train', augment=True, preload=False, to_gray=False)
-        irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
-                              'train', augment=True, preload=False, to_gray=False)
-        traindataset = ConcatDataset(lapatraindataset, irtraindataset)
+        traindataset = lapatraindataset
         eyestate_loader = DataLoader(traindataset, batch_size=train_batch_size,
                                      pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
 
@@ -143,22 +127,11 @@ class Model(Base):
     def val_dataloader(self):
         train_batch_size = self.args.val_batch_size
         num_workers = self.args.num_workers
-        val_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/images'
-        val_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/labels'
-        val_ir_image_dirs = [
-            '../datasets/tatden/positive/images',
-            '../datasets/tatden/negative/images',
-        ]
-
-        val_ir_label_dirs = [
-            '../datasets/tatden/positive/labels',
-            '../datasets/tatden/negative/labels',
-        ]
+        val_image_dir = '../datasets/data_cleaned/val/images'
+        val_label_dir = '../datasets/data_cleaned/val/labels'
         lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
                               augment=True, preload=False, to_gray=False)
-        irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs,
-                            'val', augment=True, preload=False, to_gray=False)
-        valdataset = ConcatDataset(lapavaldataset, irvaldataset)
+        valdataset = lapavaldataset
         eyestate_loader = DataLoader(valdataset, batch_size=train_batch_size,
                                      pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
 

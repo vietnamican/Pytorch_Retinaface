@@ -130,9 +130,10 @@ def detect_iris(img, net):
     img = transform(img).unsqueeze(0)
     img = img.to(device)
 
-    loc, conf = net(img)  # forward pass
+    (loc, conf), gaze = net(img)  # forward pass
 
     scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
+    gaze = gaze.squeeze(0).data.cpu().numpy()
     ind = scores.argmax()
 
     boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
@@ -142,7 +143,7 @@ def detect_iris(img, net):
 
     dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
 
-    return dets
+    return dets, gaze
 
 def paint_bbox(image, bboxes):
     for b in bboxes:
@@ -157,6 +158,22 @@ def paint_bbox(image, bboxes):
 def paint_landmark(image, landmark):
     for (x, y) in landmark:
         cv2.circle(image, (x, y), 1, (255, 255, 255), -1)
+
+def paint_gaze(image, gaze):
+    print(gaze)
+    eye_pos = (48, 48)
+    length = 30
+    thickness = 2
+    color = (0, 255, 255)
+    dx = -length * np.sin(gaze[1])
+    dy = -length * np.sin(gaze[0])
+    cv2.arrowedLine(
+        image, 
+        tuple(np.round(eye_pos).astype(np.int32)), 
+        tuple(np.round([eye_pos[0] + dx, eye_pos[1] + dy]).astype(int)), 
+        color,
+        thickness, cv2.LINE_AA, tipLength=0.2
+        )
 
 def filter_iris_box(dets, threshold):
     widths = dets[:, 2] - dets[:, 0]
@@ -206,13 +223,14 @@ if __name__ == '__main__':
     landmark_model = load_heatmap_model()
     cfg = cfg_mnet
     # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
-    net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
+    # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
+    net_path = 'logs/fusion_logs/version_5/checkpoints/checkpoint-epoch=99-val_loss=6.1081.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
     net.eval()
     cap = cv2.VideoCapture('../video/output_tatden5.mkv')
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('../video/output_tatden5_det_lapa_ir_2.avi', fourcc, 20.0, (1280, 720))
+    out = cv2.VideoWriter('../video/output_tatden5_fusion.avi', fourcc, 30.0, (1280, 720))
 
     # i = 0
     conf_threshold = 0.80625
@@ -231,21 +249,23 @@ if __name__ == '__main__':
             paint_landmark(frame, landmarks)
 
             start = time()
-            dets = detect_iris(left_eye, net)
+            dets, gaze = detect_iris(left_eye, net)
             end = time()
             print("Left eye time: {}".format(end-start))
             dets[:, :4] *= 96
             dets = filter_iris_box(dets, width_height_threshold)
             dets = filter_conf(dets, conf_threshold)
             paint_bbox(left_eye, dets)
+            paint_gaze(left_eye, gaze)
             start = time()
-            dets = detect_iris(right_eye, net)
+            dets, gaze = detect_iris(right_eye, net)
             end = time()
             print("Right eye time: {}".format(end-start))
             dets[:, :4] *= 96
             dets = filter_iris_box(dets, width_height_threshold)
             dets = filter_conf(dets, conf_threshold)
             paint_bbox(right_eye, dets)
+            paint_gaze(right_eye, gaze)
             eyes = np.concatenate([left_eye, right_eye], axis=1)
             h, w = eyes.shape[:2]
             frame[:h, :w] = eyes
