@@ -126,24 +126,30 @@ with torch.no_grad():
     priors = priorbox.forward()
     priors = priors.to('cpu')
     prior_data = priors.data
+
+def calculate_box(loc, conf):
+    scores = conf[:, 1]
+    ind = scores.argmax()
+    boxes = decode(loc, prior_data, cfg['variance'])
+    scores = scores[ind:ind+1]
+    boxes = boxes[ind:ind+1]
+    dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
+    return dets
+
 def detect_iris(img, net):
     img = transform(img).unsqueeze(0)
     img = img.to(device)
 
     (loc, conf), gaze = net(img)  # forward pass
 
-    scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
-    gaze = gaze.squeeze(0).data.cpu().numpy()
-    ind = scores.argmax()
+    loc = loc.squeeze(0).data.cpu()
+    conf = conf.squeeze(0).data.cpu().numpy()
 
-    boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
-    boxes = boxes.cpu().numpy()
-    scores = scores[ind:ind+1]
-    boxes = boxes[ind:ind+1]
+    split_index = loc.shape[0] // 2
+    loc_left, loc_right = loc[:split_index], loc[split_index:]
+    conf_left, conf_right = conf[:split_index], conf[split_index:]
 
-    dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
-
-    return dets, gaze
+    return (calculate_box(loc_left, conf_left), calculate_box(loc_right, conf_right)), gaze.squeeze(0).data.cpu()
 
 def paint_bbox(image, bboxes):
     for b in bboxes:
@@ -224,7 +230,8 @@ if __name__ == '__main__':
     cfg = cfg_mnet
     # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
     # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
-    net_path = 'logs/fusion_logs/version_5/checkpoints/checkpoint-epoch=99-val_loss=6.1081.ckpt'
+    # net_path = 'logs/fusion_logs/version_5/checkpoints/checkpoint-epoch=99-val_loss=6.1081.ckpt'
+    net_path = 'logs/fusion_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=4.7203.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
     net.eval()
@@ -248,24 +255,38 @@ if __name__ == '__main__':
             right_eye, right_transform_mat = segment_eye(frame, landmarks, 'right')
             paint_landmark(frame, landmarks)
 
-            start = time()
-            dets, gaze = detect_iris(left_eye, net)
-            end = time()
-            print("Left eye time: {}".format(end-start))
-            dets[:, :4] *= 96
-            dets = filter_iris_box(dets, width_height_threshold)
-            dets = filter_conf(dets, conf_threshold)
-            paint_bbox(left_eye, dets)
+            eyes = np.concatenate([left_eye, right_eye], axis=0)
+            (left_dets, right_dets), gaze  = detect_iris(eyes, net)
+            left_dets[:, :4] *= 96
+            left_dets = filter_iris_box(left_dets, width_height_threshold)
+            left_dets = filter_conf(left_dets, conf_threshold)
+            right_dets[:, :4] *= 96
+            right_dets = filter_iris_box(right_dets, width_height_threshold)
+            right_dets = filter_conf(right_dets, conf_threshold)
+            paint_bbox(left_eye, left_dets)
+            paint_bbox(right_eye, right_dets)
             paint_gaze(left_eye, gaze)
-            start = time()
-            dets, gaze = detect_iris(right_eye, net)
-            end = time()
-            print("Right eye time: {}".format(end-start))
-            dets[:, :4] *= 96
-            dets = filter_iris_box(dets, width_height_threshold)
-            dets = filter_conf(dets, conf_threshold)
-            paint_bbox(right_eye, dets)
             paint_gaze(right_eye, gaze)
+
+            # start = time()
+            # dets, gaze = detect_iris(left_eye, net)
+            # end = time()
+            # print("Left eye time: {}".format(end-start))
+            # dets[:, :4] *= 96
+            # dets = filter_iris_box(dets, width_height_threshold)
+            # dets = filter_conf(dets, conf_threshold)
+            # paint_bbox(left_eye, dets)
+            # # paint_gaze(left_eye, gaze)
+            # start = time()
+            # dets, gaze = detect_iris(right_eye, net)
+            # end = time()
+            # print("Right eye time: {}".format(end-start))
+            # dets[:, :4] *= 96
+            # dets = filter_iris_box(dets, width_height_threshold)
+            # dets = filter_conf(dets, conf_threshold)
+            # paint_bbox(right_eye, dets)
+            # # paint_gaze(right_eye, gaze)
+
             eyes = np.concatenate([left_eye, right_eye], axis=1)
             h, w = eyes.shape[:2]
             frame[:h, :w] = eyes
@@ -281,3 +302,4 @@ if __name__ == '__main__':
     cap.release()
     out.release()
     # cv2.destroyAllWindows()
+
