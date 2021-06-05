@@ -5,9 +5,10 @@ import torchvision.models._utils as _utils
 import torch.nn.functional as F
 from collections import OrderedDict
 
-from models.net import MobileNetV1 as MobileNetV1
-from models.net import FPN as FPN
-from models.net import SSH as SSH
+from .net import MobileNetV1 as MobileNetV1
+from .net import FPN as FPN
+from .net import SSH as SSH
+from .net import conv_dw as conv_dw
 from .base import Base
 
 
@@ -56,8 +57,7 @@ class RetinaFace(Base):
         self.fpn = FPN(in_channels_list,out_channels)
         self.ssh1 = SSH(out_channels, out_channels)
         self.ssh_eyegaze = nn.Sequential(
-            SSH(in_channels_list[2], out_channels*2),
-            nn.Conv2d(out_channels*2, 3, 1),
+            conv_dw(in_channels_list[2], 3, 1),
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Tanh()
