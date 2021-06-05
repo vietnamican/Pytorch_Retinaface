@@ -52,7 +52,7 @@ class Model(Base):
             _, out = self.model(images)
             loss = self.eyegaze_criterion(out, targets)
             self.log('train_eyegaze_loss', loss, prog_bar=True)
-        
+
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -68,7 +68,7 @@ class Model(Base):
         _, out = self.model(images)
         loss2 = self.eyegaze_criterion(out, targets)
         self.log('val_eyegaze_loss', loss2)
-        
+
         return loss1 + loss2
 
     def configure_optimizers(self):
@@ -77,7 +77,7 @@ class Model(Base):
         lr, momentum, weight_decay = self.args.lr, self.args.momentum, self.args.weight_decay
         max_epochs = self.cfg['max_epochs']
         steps = [round(step*max_epochs) for step in self.cfg['decay_steps']]
-        
+
         shared_parameters = list(self.model.body.parameters())
         eyestate_paramters = list(self.model.fpn.parameters()) + list(self.model.ssh1.parameters(
         )) + list(self.model.ClassHead.parameters()) + list(self.model.BboxHead.parameters())
@@ -85,9 +85,15 @@ class Model(Base):
 
         eyestate_optimizer = optim.SGD(shared_parameters + eyestate_paramters, lr=lr,
                                        momentum=momentum, weight_decay=weight_decay)
-        eyegaze_optimizer = optim.SGD(shared_parameters + eyegaze_paramters, lr=lr*0.01,
-                                      momentum=momentum, weight_decay=weight_decay)
-                                      
+        eyegaze_optimizer = optim.SGD(
+            [
+                {'params': shared_parameters, 'lr': lr*0.01},
+                {'params': eyegaze_paramters}
+            ],
+            lr=lr,
+            momentum=momentum, weight_decay=weight_decay
+        )
+
         eyestate_lr_scheduler = optim.lr_scheduler.MultiStepLR(
             eyestate_optimizer, milestones=steps, gamma=0.1)
         eyegaze_lr_scheduler = optim.lr_scheduler.MultiStepLR(
@@ -111,7 +117,7 @@ class Model(Base):
         train_image_dir = '../datasets/data_cleaned/train/images'
         train_label_dir = '../datasets/data_cleaned/train/labels'
         lapatraindataset = LaPa(train_image_dir, train_label_dir,
-                                'train', augment=True, preload=False, to_gray=False)
+                                'train', augment=True, preload=True, to_gray=False)
         traindataset = lapatraindataset
         eyestate_loader = DataLoader(traindataset, batch_size=train_batch_size,
                                      pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
@@ -130,7 +136,7 @@ class Model(Base):
         val_image_dir = '../datasets/data_cleaned/val/images'
         val_label_dir = '../datasets/data_cleaned/val/labels'
         lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
-                              augment=True, preload=False, to_gray=False)
+                              augment=True, preload=True, to_gray=False)
         valdataset = lapavaldataset
         eyestate_loader = DataLoader(valdataset, batch_size=train_batch_size,
                                      pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)

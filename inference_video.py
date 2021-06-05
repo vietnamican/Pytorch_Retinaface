@@ -231,9 +231,14 @@ if __name__ == '__main__':
     # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
     # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
     # net_path = 'logs/fusion_logs/version_5/checkpoints/checkpoint-epoch=99-val_loss=6.1081.ckpt'
-    net_path = 'logs/fusion_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=4.7203.ckpt'
+    net_path = 'logs/fusion_logs/no_tanh/checkpoints/checkpoint-epoch=99-val_loss=4.7203.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
+
+    params = list(net.parameters())
+    for i in range(len(params)):
+        params[i].data = torch.round(params[i].data*10**4) / 10**4
+
     net.eval()
     cap = cv2.VideoCapture('../video/output_tatden5.mkv')
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
@@ -255,8 +260,11 @@ if __name__ == '__main__':
             right_eye, right_transform_mat = segment_eye(frame, landmarks, 'right')
             paint_landmark(frame, landmarks)
 
+            start = time()
             eyes = np.concatenate([left_eye, right_eye], axis=0)
             (left_dets, right_dets), gaze  = detect_iris(eyes, net)
+            end = time()
+            print("Predict time: {}".format(end-start))
             left_dets[:, :4] *= 96
             left_dets = filter_iris_box(left_dets, width_height_threshold)
             left_dets = filter_conf(left_dets, conf_threshold)
