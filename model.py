@@ -88,9 +88,8 @@ class Model(Base):
         eyegaze_optimizer = optim.SGD(
             [
                 {'params': shared_parameters, 'lr': lr*0.01},
-                {'params': eyegaze_paramters}
+                {'params': eyegaze_paramters, 'lr': lr}
             ],
-            lr=lr,
             momentum=momentum, weight_decay=weight_decay
         )
 
