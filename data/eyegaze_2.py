@@ -35,25 +35,25 @@ def _augment(transformer, img, boxes=[[0,0,1,1,1]]):
     image = out['image']
     return image, out['bboxes']
 
-def get_all_image_paths(rootdir):
-    filenames = list()
-    for root, dirs, files in os.walk(rootdir):
-        for filename in files:
-            if filename.endswith("jpg") or filename.endswith("png") or filename.endswith("jpeg"):
-                filenames.append(filename)
-    return [os.path.join(root, filename) for filename in sorted(filenames, key=lambda path: int(re.findall(r'\d+', path)[0]))]
-
 
 def load_txt(file_path):
-    out = list()
-    idx = list()
+    headposes = list()
+    gazes = list()
+    paths = list()
     with open(file_path, "r") as file:
         for line in file:
             raw = line.strip().split("\t")
-            idx.append(raw[0])
-            temp_out = [float(s) for s in re.findall(r"[-+]?\d*\.\d+|\d+", raw[1])]
-            out.append([temp_out[0], temp_out[1], temp_out[2]])
-    return out, idx
+            path = raw[0]
+            labels = [float(num) for num in raw[1].split(' ')]
+            pose = labels[:3]
+            gaze = labels[3:]
+            # pose = np.array([float(s) for s in re.findall(r"[-+]?\d*\.\d+|\d+", raw[1])])
+            # gaze = np.array([float(s) for s in re.findall(r"[-+]?\d*\.\d+|\d+", raw[2])])
+
+            paths.append(path)
+            headposes.append(pose)
+            gazes.append(gaze)
+    return paths, headposes, gazes
 
 
 def draw_gaze(image_in, eye_pos, pitchyaw, length=15.0, thickness=2, color=(0, 0, 255)):
@@ -62,45 +62,35 @@ def draw_gaze(image_in, eye_pos, pitchyaw, length=15.0, thickness=2, color=(0, 0
     if len(image_out.shape) == 2 or image_out.shape[2] == 1:
         image_out = cv2.cvtColor(image_out, cv2.COLOR_GRAY2BGR)
     dx = -length * np.sin(pitchyaw[1])
-    dy = -length * np.sin(pitchyaw[0])
+    dy = length * np.sin(pitchyaw[0])
     cv2.arrowedLine(image_out, tuple(np.round(eye_pos).astype(np.int32)),
-                    tuple(
-                        np.round([eye_pos[0] + dx, eye_pos[1] + dy]).astype(int)), color,
-                    thickness, cv2.LINE_AA, tipLength=0.2)
+                        tuple(np.round([eye_pos[0] + dx, eye_pos[1] + dy]).astype(int)), color, thickness, cv2.LINE_AA, tipLength=0.2)
     return image_out
 
 
 class EyeGaze(Dataset):
     def __init__(self, root, set_type='train', target_size=96, augment=False, preload=False, to_gray=False) -> None:
         super().__init__()
-        self.img_paths = get_all_image_paths(os.path.join(root, 'images'))
         self.target_size = target_size
-        self.headposes, self.headposes_frame = load_txt(os.path.join(root, 'labels', 'headpose.txt'))
-        self.gazes, self.gazes_frame = load_txt(os.path.join(root, 'labels', 'gaze.txt'))
-
-        split_ratio = 0.8
-        split_index = round(len(self.img_paths) * split_ratio)
-        if set_type == 'train':
-            self.img_paths = self.img_paths[:split_index]
-            self.headposes, self.headposes_frame = self.headposes[:split_index], self.headposes_frame[:split_index]
-            self.gazes, self.gazes_frame = self.gazes[:split_index], self.gazes_frame[:split_index]
-        else:
-            self.img_paths = self.img_paths[split_index:]
-            self.headposes, self.headposes_frame = self.headposes[split_index:], self.headposes_frame[split_index:]
-            self.gazes, self.gazes_frame = self.gazes[split_index:], self.gazes_frame[split_index:]
-
         self.rgb = not to_gray
+        # Load labels
+        self.paths = []
+        self.headposes = []
+        self.gazes = []
         self.imgs = []
-        self.augment_function = partial(_augment, transformerr[set_type])
+        self.split_ratio = 0.8
+        self.set_type = set_type
+        self._parse_data(root)
+        self.augment_function = partial(_augment, transformerr[set_type]) 
         self.preload = preload
         if self.preload:
-            self.__load_image()
+            self.__load_images()
 
     def __getitem__(self, idx):
         if self.preload:
-            img = self.imgs[idx]
+            img= self.imgs[idx]
         else:
-            img = cv2.imread(self.img_paths[idx])
+            img = cv2.imread(self.paths[idx])
         h, w, _ = img.shape
         w2 = int(w / 2)
         left_img = img[:, :w2]
@@ -110,15 +100,16 @@ class EyeGaze(Dataset):
         if not self.rgb:
             left_img = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
             left_img = cv2.normalize(left_img, left_img, alpha=0,
-                                    beta=255, norm_type=cv2.NORM_MINMAX) 
+                                beta=255, norm_type=cv2.NORM_MINMAX)
         
         # Right eye
         right_img = cv2.resize(right_img, (self.target_size, self.target_size))
         if not self.rgb:
             right_img = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY)
             right_img = cv2.normalize(right_img, right_img,
-                                    alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
+                                alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
         
+
         gaze = self.gazes[idx]
         # Normalize to unit vector
         gaze = gaze/np.linalg.norm(gaze)
@@ -126,6 +117,15 @@ class EyeGaze(Dataset):
         gaze = np.arcsin(gaze)
         gaze[0] = -gaze[0]
         gaze = -gaze
+
+         # Quick check data shape
+        data_ok = gaze.shape==(3,)
+        if not data_ok:
+            print(self.paths[idx])
+            print(gaze)
+            print(f'There is wrong format data, just skip!!!')
+            return self.__getitem__(random.randint(0, self.__len__()-1))
+
         img = np.concatenate([left_img, right_img], axis=0)
         img, _ = self.augment_function(img)
         return img, torch.FloatTensor(gaze)
@@ -133,18 +133,41 @@ class EyeGaze(Dataset):
     def __len__(self):
         return len(self.headposes)
 
-    def __load_image(self):
-        for image_path in tqdm(self.img_paths):
+    def _load_data_in_one_dir(self, root):
+        paths, headposes, gazes = load_txt(os.path.join(root, 'labels', 'log.txt'))
+        paths = [os.path.join(root, path) for path in paths]
+        split_index = round(len(paths) * self.split_ratio)
+        if self.set_type == 'train':
+            print('set type train')
+            paths = paths[:split_index]
+            headposes = headposes[:split_index]
+            gazes = gazes[:split_index]
+        else:
+            paths = paths[split_index:]
+            headposes = headposes[split_index:]
+            gazes = gazes[split_index:]
+        self.paths.extend(paths)
+        self.headposes.extend(headposes)
+        self.gazes.extend(gazes)
+
+    def _parse_data(self, root):
+        if isinstance(root, list):
+            for r in root:
+                self._load_data_in_one_dir(r)
+        else:
+            self._load_data_in_one_dir(root)
+
+    def __load_images(self):
+        for image_path in tqdm(self.paths):
             self.imgs.append(cv2.imread(image_path))
-    
 
 
 # def load_data(root, batch_size=16, to_gray=False):
-#     data = EyeGaze(root, 'val', to_gray=to_gray)
+#     data = EyeGaze(root, 'train', to_gray=to_gray)
 #     return data
 
 
-# dataset = load_data('../../datasets/eyegazedata')
+# dataset = load_data(['../../datasets/data_gaze/ir/normal', '../../datasets/data_gaze/rgb/normal', '../../datasets/data_gaze/rgb/glance'])
 # loader = DataLoader(dataset, batch_size=1, shuffle=True)
 # for image, gaze in loader:
 #     print(gaze)

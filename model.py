@@ -134,9 +134,14 @@ class Model(Base):
         eyestate_loader = DataLoader(traindataset, batch_size=train_batch_size,
                                      pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
 
-        eyegaze_dir = '../datasets/eyegazedata'
+        eyegaze_dirs = [
+            '../datasets/data_gaze/rgb/normal',
+            '../datasets/data_gaze/rgb/glance',
+            '../datasets/data_gaze/ir/normal',
+        ]
+        # eyegaze_dir = '../datasets/eyegazedata'
         eyegazetraindataset = EyeGaze(
-            eyegaze_dir, set_type='train', target_size=self.cfg['image_size'], augment=True, preload=True, to_gray=False)
+            eyegaze_dirs, set_type='train', target_size=self.cfg['image_size'], augment=True, preload=True, to_gray=False)
         eyegaze_loader = DataLoader(eyegazetraindataset, batch_size=train_batch_size,
                                     pin_memory=True, num_workers=num_workers, shuffle=True)
 
@@ -152,10 +157,15 @@ class Model(Base):
         valdataset = lapavaldataset
         eyestate_loader = DataLoader(valdataset, batch_size=train_batch_size,
                                      pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
-
-        eyegaze_dir = '../datasets/eyegazedata'
+        
+        eyegaze_dirs = [
+            '../datasets/data_gaze/rgb/normal',
+            '../datasets/data_gaze/rgb/glance',
+            '../datasets/data_gaze/ir/normal',
+        ]
+        # eyegaze_dir = '../datasets/eyegazedata'
         eyegazetraindataset = EyeGaze(
-            eyegaze_dir, set_type='val', target_size=self.cfg['image_size'], augment=True, preload=True, to_gray=False)
+            eyegaze_dirs, set_type='val', target_size=self.cfg['image_size'], augment=True, preload=True, to_gray=False)
         eyegaze_loader = DataLoader(eyegazetraindataset, batch_size=train_batch_size,
                                     pin_memory=True, num_workers=num_workers, shuffle=True)
 
