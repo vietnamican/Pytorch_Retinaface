@@ -72,8 +72,8 @@ class Model(Base):
         return loss1 + loss2
 
     def configure_optimizers(self):
-        num_training_samples = len(self.train_dataloader()[0])
-        self.total_warmup_steps = self.warmup_epochs * num_training_samples
+        # num_training_samples = len(self.train_dataloader()[0])
+        # self.total_warmup_steps = self.warmup_epochs * num_training_samples
         lr, momentum, weight_decay = self.args.lr, self.args.momentum, self.args.weight_decay
         max_epochs = self.cfg['max_epochs']
         steps = [round(step*max_epochs) for step in self.cfg['decay_steps']]
@@ -87,7 +87,7 @@ class Model(Base):
                                        momentum=momentum, weight_decay=weight_decay)
         eyegaze_optimizer = optim.SGD(
             [
-                {'params': shared_parameters, 'lr': lr*0.01},
+                {'params': shared_parameters, 'lr': lr*0.5},
                 {'params': eyegaze_paramters, 'lr': lr}
             ],
             momentum=momentum, weight_decay=weight_decay
@@ -99,25 +99,38 @@ class Model(Base):
             eyegaze_optimizer, milestones=steps, gamma=0.1)
         return [eyestate_optimizer, eyegaze_optimizer], [eyestate_lr_scheduler, eyegaze_lr_scheduler]
 
-    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu, using_native_amp, using_lbfgs):
-        # warm up lr
-        if self.trainer.global_step < self.total_warmup_steps:
-            lr_scale = min(1., float(self.trainer.global_step +
-                           1.) / self.total_warmup_steps)
-            for pg in optimizer.param_groups:
-                pg['lr'] = lr_scale * self.args.lr
+    # def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu, using_native_amp, using_lbfgs):
+    #     # warm up lr
+    #     if self.trainer.global_step < self.total_warmup_steps:
+    #         lr_scale = min(1., float(self.trainer.global_step +
+    #                        1.) / self.total_warmup_steps)
+    #         for pg in optimizer.param_groups:
+    #             pg['lr'] = lr_scale * self.args.lr
 
-        # update params
-        optimizer.step(closure=optimizer_closure)
+    #     # update params
+    #     optimizer.step(closure=optimizer_closure)
 
     def train_dataloader(self):
         train_batch_size = self.args.train_batch_size
         num_workers = self.args.num_workers
         train_image_dir = '../datasets/data_cleaned/train/images'
         train_label_dir = '../datasets/data_cleaned/train/labels'
+        train_ir_image_dirs = [
+            '../datasets/ir_cleaned/images/out2',
+            '../datasets/ir_cleaned/images/out22',
+            '../datasets/ir_cleaned/images/out222',
+        ]
+
+        train_ir_label_dirs = [
+            '../datasets/ir_cleaned/labels/out2',
+            '../datasets/ir_cleaned/labels/out22',
+            '../datasets/ir_cleaned/labels/out222',
+        ]
         lapatraindataset = LaPa(train_image_dir, train_label_dir,
                                 'train', augment=True, preload=True, to_gray=False)
-        traindataset = lapatraindataset
+        irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
+                            'train', augment=True, preload=True, to_gray=False)
+        traindataset = ConcatDataset(lapatraindataset, irtraindataset)
         eyestate_loader = DataLoader(traindataset, batch_size=train_batch_size,
                                      pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
 

@@ -4,7 +4,7 @@ cfg_mnet = {
     'name': 'mobilenet0.25',
     # prior
     'min_sizes': [[16, 32]],
-    'ratios': [1, 1.5, 2], # width/height
+    'ratios': [1], # width/height
     'steps': [8],
     # 'stride_prior': 1
     'variance': [0.1, 0.2],
@@ -12,7 +12,7 @@ cfg_mnet = {
     'loc_weight': 2.0,
     'gpu_train': True,
     'ngpu': 1,
-    'max_epochs': 100,
+    'max_epochs': 250,
     'warmup_epochs': 5,
     'decay_steps': [0.55, 0.78],
     'image_size': 96,

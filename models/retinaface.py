@@ -57,7 +57,8 @@ class RetinaFace(Base):
         self.fpn = FPN(in_channels_list,out_channels)
         self.ssh1 = SSH(out_channels, out_channels)
         self.ssh_eyegaze = nn.Sequential(
-            conv_dw(in_channels_list[2], 3, 1),
+            SSH(in_channels_list[2], out_channels),
+            nn.Conv2d(out_channels, 3, 1),
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Tanh()

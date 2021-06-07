@@ -231,7 +231,8 @@ if __name__ == '__main__':
     # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
     # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
     # net_path = 'logs/fusion_logs/version_5/checkpoints/checkpoint-epoch=99-val_loss=6.1081.ckpt'
-    net_path = 'logs/fusion_logs/no_tanh/checkpoints/checkpoint-epoch=99-val_loss=4.7203.ckpt'
+    # net_path = 'logs/fusion_logs/no_tanh/checkpoints/checkpoint-epoch=99-val_loss=4.7203.ckpt'
+    net_path = 'logs/fusion_logs/version_2/checkpoints/checkpoint-epoch=246-val_loss=4.4238.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, True)
 
@@ -240,9 +241,9 @@ if __name__ == '__main__':
         params[i].data = torch.round(params[i].data*10**4) / 10**4
 
     net.eval()
-    cap = cv2.VideoCapture('../video/output_tatden5.mkv')
+    cap = cv2.VideoCapture('../video/toan123.avi')
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('../video/output_tatden5_fusion.avi', fourcc, 30.0, (1280, 720))
+    out = cv2.VideoWriter('../video/toan123_adjust_weight_0.5.avi', fourcc, 30.0, (1280, 720))
 
     # i = 0
     conf_threshold = 0.80625
