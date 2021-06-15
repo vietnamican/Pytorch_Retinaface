@@ -112,8 +112,10 @@ class LaPa(data.Dataset):
         return img, torch.FloatTensor(target)
     
     def __load_data_in_one_dir(self, img_dir, label_dir):
+        num_batch = 100
         label_extension = 'txt'
-        for img_file in tqdm(os.listdir(img_dir)):
+        # for img_file in tqdm(os.listdir(img_dir)):
+        for img_file in tqdm(os.listdir(img_dir)[:num_batch]):
             img_name, img_extension = os.path.splitext(img_file)
             full_img_path = os.path.join(img_dir, img_file)
             if self.preload:
