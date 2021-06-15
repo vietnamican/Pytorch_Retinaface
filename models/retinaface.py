@@ -54,8 +54,7 @@ class RetinaFace(Base):
             in_channels_stage * 8,
         ]
         out_channels = cfg['out_channel']
-        self.fpn = FPN(in_channels_list,out_channels)
-        self.ssh1 = SSH(out_channels, out_channels)
+        self.ssh_eyestate = SSH(in_channels_list[0], out_channels)
         self.ssh_eyegaze = nn.Sequential(
             SSH(in_channels_list[2], out_channels),
             nn.Conv2d(out_channels, 3, 1),
@@ -87,17 +86,13 @@ class RetinaFace(Base):
     def forward(self,inputs):
         out = self.body(inputs)
 
-        # FPN
-        fpn = self.fpn(out)
-
-        # SSH
-        feature = self.ssh1(fpn)
-
         # SSH eyegaze
         feature_eyegaze = self.ssh_eyegaze(out[2])
 
-        bbox_regressions = self.BboxHead(feature)
-        classifications = self.ClassHead(feature)
+        # SSH
+        feature_eyestate = self.ssh_eyestate(out[0])
+        bbox_regressions = self.BboxHead(feature_eyestate)
+        classifications = self.ClassHead(feature_eyestate)
 
         if self.phase == 'train':
             output = (bbox_regressions, classifications), feature_eyegaze 

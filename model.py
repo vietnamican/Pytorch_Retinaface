@@ -37,8 +37,10 @@ class Model(Base):
     def forward(self, x):
         return self.model(x)
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
+    def training_step(self, batch, batch_idx):
+    # def training_step(self, batch, batch_idx, optimizer_idx):
         eyestate_batch, eyegaze_batch = batch
+        optimizer_idx = EYE_STATE_IDX
         if optimizer_idx == EYE_STATE_IDX:
             images, targets = eyestate_batch
             out, _ = self.model(images)
@@ -72,43 +74,42 @@ class Model(Base):
         return loss1 + loss2
 
     def configure_optimizers(self):
-        # num_training_samples = len(self.train_dataloader()[0])
-        # self.total_warmup_steps = self.warmup_epochs * num_training_samples
+        num_training_samples = len(self.train_dataloader()[0])
+        self.total_warmup_steps = self.warmup_epochs * num_training_samples
         lr, momentum, weight_decay = self.args.lr, self.args.momentum, self.args.weight_decay
         max_epochs = self.cfg['max_epochs']
         steps = [round(step*max_epochs) for step in self.cfg['decay_steps']]
 
-        shared_parameters = list(self.model.body.parameters())
-        eyestate_paramters = list(self.model.fpn.parameters()) + list(self.model.ssh1.parameters(
-        )) + list(self.model.ClassHead.parameters()) + list(self.model.BboxHead.parameters())
-        eyegaze_paramters = list(self.model.ssh_eyegaze.parameters())
+        eyestate_paramters = list(self.model.body.stage1.parameters()) + \
+            list(self.model.ssh_eyestate.parameters()) + \
+            list(self.model.ClassHead.parameters()) + \
+            list(self.model.BboxHead.parameters())
+        # eyegaze_paramters = list(self.model.body.stage2.parameters()) + \
+        #     list(self.model.body.stage3.parameters()) + \
+        #     list(self.model.ssh_eyegaze.parameters())
 
-        eyestate_optimizer = optim.SGD(shared_parameters + eyestate_paramters, lr=lr,
+        eyestate_optimizer = optim.SGD(eyestate_paramters, lr=lr,
                                        momentum=momentum, weight_decay=weight_decay)
-        eyegaze_optimizer = optim.SGD(
-            [
-                {'params': shared_parameters, 'lr': lr*0.5},
-                {'params': eyegaze_paramters, 'lr': lr}
-            ],
-            momentum=momentum, weight_decay=weight_decay
-        )
+        # eyegaze_optimizer = optim.SGD(eyegaze_paramters, lr=lr,
+        #                               momentum=momentum, weight_decay=weight_decay)
 
         eyestate_lr_scheduler = optim.lr_scheduler.MultiStepLR(
             eyestate_optimizer, milestones=steps, gamma=0.1)
-        eyegaze_lr_scheduler = optim.lr_scheduler.MultiStepLR(
-            eyegaze_optimizer, milestones=steps, gamma=0.1)
-        return [eyestate_optimizer, eyegaze_optimizer], [eyestate_lr_scheduler, eyegaze_lr_scheduler]
+        # eyegaze_lr_scheduler = optim.lr_scheduler.MultiStepLR(
+        #     eyegaze_optimizer, milestones=steps, gamma=0.1)
+        return [eyestate_optimizer], [eyestate_lr_scheduler]
+        # return [eyestate_optimizer, eyegaze_optimizer], [eyestate_lr_scheduler, eyegaze_lr_scheduler]
 
-    # def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu, using_native_amp, using_lbfgs):
-    #     # warm up lr
-    #     if self.trainer.global_step < self.total_warmup_steps:
-    #         lr_scale = min(1., float(self.trainer.global_step +
-    #                        1.) / self.total_warmup_steps)
-    #         for pg in optimizer.param_groups:
-    #             pg['lr'] = lr_scale * self.args.lr
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu, using_native_amp, using_lbfgs):
+        # warm up lr
+        if self.trainer.global_step < self.total_warmup_steps:
+            lr_scale = min(1., float(self.trainer.global_step +
+                           1.) / self.total_warmup_steps)
+            for pg in optimizer.param_groups:
+                pg['lr'] = lr_scale * self.args.lr
 
-    #     # update params
-    #     optimizer.step(closure=optimizer_closure)
+        # update params
+        optimizer.step(closure=optimizer_closure)
 
     def train_dataloader(self):
         train_batch_size = self.args.train_batch_size
@@ -129,7 +130,7 @@ class Model(Base):
         lapatraindataset = LaPa(train_image_dir, train_label_dir,
                                 'train', augment=True, preload=True, to_gray=False)
         irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
-                            'train', augment=True, preload=True, to_gray=False)
+                              'train', augment=True, preload=True, to_gray=False)
         traindataset = ConcatDataset(lapatraindataset, irtraindataset)
         eyestate_loader = DataLoader(traindataset, batch_size=train_batch_size,
                                      pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
@@ -157,7 +158,7 @@ class Model(Base):
         valdataset = lapavaldataset
         eyestate_loader = DataLoader(valdataset, batch_size=train_batch_size,
                                      pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
-        
+
         eyegaze_dirs = [
             '../datasets/data_gaze/rgb/normal',
             '../datasets/data_gaze/rgb/glance',
