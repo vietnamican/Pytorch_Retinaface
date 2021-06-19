@@ -15,10 +15,11 @@ class Model(Base):
         self.total_warmup_steps = self.num_training_steps * self.warmup_epochs
         self.model = RetinaFace(cfg, phase)
         self.num_classes = 2
+        device='cuda:1'
         img_dim = self.cfg['image_size']
         prior_box = PriorBox(cfg, image_size=(img_dim, img_dim))
         if self.cfg['gpu_train']:
-            self.priors = prior_box.forward().cuda()
+            self.priors = prior_box.forward().to(device)
         else:
             self.priors = prior_box.forward()
 

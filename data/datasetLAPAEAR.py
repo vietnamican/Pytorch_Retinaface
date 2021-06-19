@@ -2,16 +2,11 @@ import numpy as np
 import cv2
 import sys
 from tqdm import tqdm
-# sys.path.append('..')
 
 from torch.utils import data
 import glob
 import os
-# import mxnet as mx
 
-import albumentations as A
-import imgaug.augmenters as iaa
-from torchvision import  transforms
 import ast
 import random
 import math
@@ -61,9 +56,6 @@ class LAPA106DataSet(data.Dataset):
         
         eye_middle = np.mean(lmks[eyeindices], axis=1)
 
-       
-        # recentre_mat[0, 2] = iw/2 - eye_middle[0] + 0.5 * eye_width * 1
-        # recentre_mat[1, 2] = ih/2 - eye_middle[1] + 0.5 * oh / ow * eye_width * 1
 
         if self.augment:
             recentre_mat[0, 2] += random.randint(0, ow//4)  # x
@@ -72,31 +64,24 @@ class LAPA106DataSet(data.Dataset):
         # Apply transforms
         if transform_mat is None:
             transform_mat =  recentre_mat * center_mat * scale_mat * translate_mat
-        # # print(transform_mat)  
-        # if math.isnan(transform_mat[0, 0]):
-        #     print(scale)
-        #     print(ow)
-        #     print(eye_width)
-        #     # print(recentre_mat)
-        #     # print(center_mat)
-        #     # print(scale_mat)
-        #     # print(translate_mat)
-
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
 
         eye_image = cv2.warpAffine(image, transform_mat[:2, :], (oh, ow))
-        # eye_image = cv2.normalize(eye_image, eye_image, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
 
         return eye_image, transform_mat
 
-    def __init__(self, img_dir, anno_dir, augment=False, transforms=None, imgsize=256):
+    def __init__(self, img_dir, anno_dir, out_img_dir, out_label_dir, augment=False, transforms=None, imgsize=256):
         self.img_dir = img_dir
         self.anno_dir = anno_dir
+        self.out_dir = out_dir
+        self.out_label_dir = out_label_dir
         self.transforms = transforms
         self.augment = augment
         self.img_path_list = glob.glob(img_dir + "/*.jpg")
         self.TARGET_IMAGE_SIZE = (imgsize, imgsize)
+        if not os.path.isdir(self.out_img_dir):
+            os.makedirs(self.out_img_dir)
+        if not os.path.isdir(self.out_label_dir):
+            os.makedirs(self.out_label_dir)
 
     def __len__(self):
         return len(self.img_path_list)
@@ -104,7 +89,7 @@ class LAPA106DataSet(data.Dataset):
     def _get_106_landmarks(self, path):
         file1 = open(path, 'r') 
         ls = file1.readlines() 
-        ls = ls[1:] # Get only lines that contain landmarks. 68 lines
+        ls = ls[1:] # Get only lines that contain landmarks
 
         lm = []
         for l in ls:
@@ -137,14 +122,14 @@ class LAPA106DataSet(data.Dataset):
         center_x, center_y = landmark[8]
         left, top, right, bottom = center_x - width / 2, center_y - height / 2, center_x + width / 2, center_y + height / 2
         left, top, right, bottom = round(left), round(top), round(right), round(bottom)
-        # image = cv2.rectangle(image, (left, top), (right, bottom), (255,0,0), 1)
         return image
+
     def __write_label(self, out_label_dir, img_name, landmark):
-        landmark = landmark[0]
+        if len(landmark == 1):
+            landmark = landmark[0]
         top1, top2 = landmark[1], landmark[3]
         bottom1, bottom2 = landmark[7], landmark[5]
-        width = max((top2-top1)[0], (bottom2 - bottom1)[0])
-        width = width * 3 / 4
+        width = max((top2-top1)[0], (bottom2 - bottom1)[0]) * 3 / 4
         height = (landmark[6] - landmark[2])[1]
         center_x, center_y = landmark[8]
         left, top = center_x - width / 2, center_y - height / 2
@@ -163,56 +148,29 @@ class LAPA106DataSet(data.Dataset):
     def  __getitem__(self, index):
         outdir = 'Label'
         f = self.img_path_list[index]
-        self.img = cv2.imread(f)
+        img = cv2.imread(f)
         replacing_extension = ".txt"
         self.landmark = self._get_106_landmarks(f.replace(self.img_dir, self.anno_dir).replace(".jpg", replacing_extension))
-        self.left_eye_mask = self.create_mask(self.img, self.landmark[[66,67,68,69,70,71,72,73]])
-        self.right_eye_mask = self.create_mask(self.img, self.landmark[[75,76,77,78,79,80,81,82]])
 
-        image = self.img.copy()
+        image = img.copy()
 
-        left_eye, transform_mat_left = self.__segment_eye(self.img, self.landmark, eye='left', ow=self.TARGET_IMAGE_SIZE[1], oh=self.TARGET_IMAGE_SIZE[0])
-        right_eye, transform_mat_right = self.__segment_eye(self.img, self.landmark, eye='right', ow=self.TARGET_IMAGE_SIZE[1], oh=self.TARGET_IMAGE_SIZE[0])
-        left_eye_mask, _ = self.__segment_eye(self.left_eye_mask, self.landmark, eye='left', ow=self.TARGET_IMAGE_SIZE[1], oh=self.TARGET_IMAGE_SIZE[0], transform_mat=transform_mat_left)
-        right_eye_mask, _ = self.__segment_eye(self.right_eye_mask, self.landmark, eye='right', ow=self.TARGET_IMAGE_SIZE[1], oh=self.TARGET_IMAGE_SIZE[0], transform_mat=transform_mat_right)
+        # return eye_cropped and transform matrix
+        left_eye, transform_mat_left = self.__segment_eye(img, self.landmark, eye='left', ow=self.TARGET_IMAGE_SIZE[1], oh=self.TARGET_IMAGE_SIZE[0])
+        right_eye, transform_mat_right = self.__segment_eye(img, self.landmark, eye='right', ow=self.TARGET_IMAGE_SIZE[1], oh=self.TARGET_IMAGE_SIZE[0])
         
-        # points = cv2.transform(np.array([[[x, y]]]), transform_mat_left[:2 :])
+        # using transform matrix to transform landmark points
         left_eye_landmarks = np.array([self.landmark[[66,67,68,69,70,71,72,73,104]]])
         right_eye_landmarks = np.array([self.landmark[[75,76,77,78,79,80,81,82,105]]])
         if math.isnan(transform_mat_left[0, 0]) or math.isnan(transform_mat_right[0, 0]):
             return None, None, None
         left_eye_landmarks = cv2.transform(left_eye_landmarks, transform_mat_left[:2 :])
         right_eye_landmarks = cv2.transform(right_eye_landmarks, transform_mat_right[:2 :])
-        left_eye = self.__draw_boundingbox(left_eye, left_eye_landmarks)
-        right_eye = self.__draw_boundingbox(right_eye, right_eye_landmarks)
-        outpath = f.replace('LaPa', outdir)
-        out_image_dir = os.path.dirname(outpath)
-        out_label_dir = out_image_dir.replace('Label', 'Anno')
-        if not os.path.isdir(out_image_dir):
-            os.makedirs(out_image_dir)
-        if not os.path.isdir(out_label_dir):
-            os.makedirs(out_label_dir)
+        
         img_name = os.path.basename(f)
         img_name = img_name.split('.')[0]
-        # cv2.imwrite(os.path.join(out_image_dir, img_name + "_left.jpg"), left_eye)
-        # cv2.imwrite(os.path.join(out_image_dir, img_name + "_right.jpg"), right_eye)
         left_eye_rgb = left_eye.copy()
         right_eye_rgb = right_eye.copy()
-        # cv2.imshow("leye ", left_eye_rgb)
-        # cv2.imshow("reye ", right_eye_rgb)
-        # sleep(0.15)
        
-        left_eye = cv2.cvtColor(left_eye, cv2.COLOR_BGR2GRAY)
-        left_eye = cv2.normalize(left_eye, left_eye, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-        left_eye = left_eye.astype(np.float32)
-        left_eye *= 2.0 / 255.0
-        left_eye -= 1.0
-
-        right_eye = cv2.cvtColor(right_eye, cv2.COLOR_BGR2GRAY)
-        right_eye = cv2.normalize(right_eye, right_eye, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-        right_eye = right_eye.astype(np.float32)
-        right_eye *= 2.0 / 255.0
-        right_eye -= 1.0
 
         # Calulate EARs
         v1 = np.linalg.norm(self.landmark[67]-self.landmark[73])
@@ -229,34 +187,14 @@ class LAPA106DataSet(data.Dataset):
         right_ear = np.max([v1,v2,v3])/(h+0.000001)
         right_ear = min(right_ear,1.0)
 
-        # print(left_ear, right_ear)
         if not left_ear < 0.15:
-            # value = input("left")
-            # if not value == 'n':
-            cv2.imwrite(os.path.join(out_image_dir, img_name + "_left.jpg"), left_eye_rgb)
-            self.__write_label(out_label_dir, img_name + "_left", left_eye_landmarks)
+            cv2.imwrite(os.path.join(self.out_img_dir, img_name + "_left.jpg"), left_eye_rgb)
+            self.__write_label(self.out_label_dir, img_name + "_left", left_eye_landmarks)
         if not right_ear < 0.15:
-            # value = input('right')
-            # if not value == 'n':
-            cv2.imwrite(os.path.join(out_image_dir, img_name + "_right.jpg"), right_eye_rgb)
-            self.__write_label(out_label_dir, img_name + "_right", right_eye_landmarks)
+            cv2.imwrite(os.path.join(self.out_img_dir, img_name + "_right.jpg"), right_eye_rgb)
+            self.__write_label(self.out_label_dir, img_name + "_right", right_eye_landmarks)
 
-        left = random.randint(0, 1)
-
-        if left:
-            left_eye = np.expand_dims(left_eye, -1)
-            left_eye_mask = np.expand_dims(left_eye_mask, -1)
-
-            left_eye = np.transpose(left_eye, (2,0,1))
-            left_eye_mask = np.transpose(left_eye_mask, (2, 0,1))
-            return  torch.FloatTensor(left_eye), torch.FloatTensor([left_ear]), torch.FloatTensor([-1])
-        else:
-            right_eye = np.expand_dims(right_eye, -1)
-            right_eye_mask = np.expand_dims(right_eye_mask, -1)
-
-            right_eye = np.transpose(right_eye, (2,0,1))
-            right_eye_mask = np.transpose(right_eye_mask, (2, 0,1))
-            return  torch.FloatTensor(right_eye), torch.FloatTensor([right_ear]), torch.FloatTensor([-1])
+        return None, None, None
 
 if __name__ == "__main__":
    
@@ -265,21 +203,4 @@ if __name__ == "__main__":
     
     for eye, ear, mask in tqdm(lapa):
         pass
-        # print(eye.shape)
-        # print(mask.shape)
-        # eye = np.transpose(eye.numpy(), (1,2,0))
-        # mask = np.transpose(mask.numpy(), (1,2,0))
-        # print(np.max(eye), np.min(eye), np.max(mask), np.min(mask))
-
-        # cv2.imshow("img ", img)
-        # print(f'ear: {ear}')
-        # cv2.imshow("eye ", eye)
-        # cv2.imshow("mask ", mask)
-
-        # k = cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-        # if k==27:
-        #     break
-    
-    # cv2.destroyAllWindows()
         

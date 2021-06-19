@@ -29,7 +29,7 @@ parser.add_argument('--train_batch_size', default=32,
                     help='Batch size for training')
 parser.add_argument('--val_batch_size', default=32,
                     help='Batch size for training')
-parser.add_argument('--num_workers', default=12, type=int,
+parser.add_argument('--num_workers', default=8, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--lr', '--learning-rate', default=1e-3,
                     type=float, help='initial learning rate')
@@ -38,7 +38,7 @@ parser.add_argument('--weight_decay', default=5e-4,
                     type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
-parser.add_argument('--save_folder', default='logs/test_logs',
+parser.add_argument('--save_folder', default='logs/resnet34_logs',
                     help='Location to save checkpoint models')
 
 args = parser.parse_args()
@@ -65,10 +65,11 @@ def load_trainer(logdir, device, max_epochs, checkpoint=None):
     )
     lr_monitor = LearningRateMonitor(log_momentum=False)
     loss_callback = ModelCheckpoint(
-        monitor='val_loss',
-        filename='checkpoint-{epoch:02d}-{val_loss:.4f}',
-        save_top_k=-1,
-        mode='min',
+        save_last=True
+        # monitor='val_loss',
+        # filename='checkpoint-{epoch:02d}',
+        # save_top_k=10,
+        # mode='min',
     )
     callbacks = [loss_callback, lr_monitor]
     resume_from_checkpoint = checkpoint
@@ -85,7 +86,8 @@ def load_trainer(logdir, device, max_epochs, checkpoint=None):
             max_epochs=max_epochs,
             logger=logger,
             callbacks=callbacks,
-            gpus=1,
+            gpus=[1,],
+            accelerator=None,
             resume_from_checkpoint=resume_from_checkpoint
         )
     else:
@@ -100,26 +102,59 @@ def load_trainer(logdir, device, max_epochs, checkpoint=None):
 
 
 def load_data(args, val_only=False):
-    train_image_dir = '../datasets/data_cleaned/train/images'
-    train_label_dir = '../datasets/data_cleaned/train/labels'
-    val_image_dir = '../datasets/data_cleaned/val/images'
-    val_label_dir = '../datasets/data_cleaned/val/labels'
+    train_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/images'
+    train_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/labels'
+    val_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/images'
+    val_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/labels'
+
+    train_ir_image_dirs = [
+        '../datasets/ir_negpos/positive/images/out2',
+        '../datasets/ir_negpos/positive/images/out22',
+        '../datasets/ir_negpos/positive/images/out222',
+        '../datasets/ir_negpos/negative/images/out2',
+        '../datasets/ir_negpos/negative/images/out22',
+        '../datasets/ir_negpos/negative/images/out222'
+    ]
+
+    train_ir_label_dirs = [
+        '../datasets/ir_negpos/positive/labels/out2',
+        '../datasets/ir_negpos/positive/labels/out22',
+        '../datasets/ir_negpos/positive/labels/out222',
+        '../datasets/ir_negpos/negative/labels/out2',
+        '../datasets/ir_negpos/negative/labels/out22',
+        '../datasets/ir_negpos/negative/labels/out222'
+    ]
+
+    val_ir_image_dirs = [
+        '../datasets/tatden/positive/images',
+        '../datasets/tatden/negative/images',
+    ]
+
+    val_ir_label_dirs = [
+        '../datasets/tatden/positive/labels',
+        '../datasets/tatden/negative/labels',
+    ]
 
     train_batch_size = args.train_batch_size
     val_batch_size = args.val_batch_size
     num_workers = args.num_workers
     
     lapatraindataset = LaPa(train_image_dir, train_label_dir,
-                            'train', augment=True, preload=False, to_gray=False)
-    traindataset = lapatraindataset
+                            'train', augment=True, preload=True, to_gray=False)
+    irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
+                          'train', augment=True, preload=True, to_gray=False)
+    traindataset = ConcatDataset(lapatraindataset, irtraindataset)
     print(len(traindataset))
+    print(len(irtraindataset))
     print(len(lapatraindataset))
-    trainloader = DataLoader(lapatraindataset, batch_size=train_batch_size,
+    trainloader = DataLoader(traindataset, batch_size=train_batch_size,
                              pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
     lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
-                          augment=True, preload=False, to_gray=False)
-    valdataset = lapavaldataset
+                          augment=True, preload=True, to_gray=False)
+    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=True, to_gray=False)
+    valdataset = ConcatDataset(lapavaldataset, irvaldataset)
     print(len(valdataset))
+    print(len(irvaldataset))
     print(len(lapavaldataset))
     valloader = DataLoader(valdataset, batch_size=val_batch_size,
                            pin_memory=True, num_workers=num_workers, collate_fn=detection_collate)

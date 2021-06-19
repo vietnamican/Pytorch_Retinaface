@@ -77,45 +77,45 @@ class LaPa(data.Dataset):
         label = self.labels[index]
         annotations = np.zeros((0, 5))
         annotation = np.zeros((1, 5))
-        # if self.negpos[index] == 0:
-        #     # print('negative')
-        #     annotation[0, 0] = 0
-        #     annotation[0, 1] = 0
-        #     annotation[0, 2] = 0
-        #     annotation[0, 3] = 0
-        #     annotation[0, 4] = 0
-        #     annotations = np.append(annotations, annotation, axis=0)
-        #     target = np.array(annotations)
+        if self.negpos[index] == 0:
+            # print('negative')
+            annotation[0, 0] = 0
+            annotation[0, 1] = 0
+            annotation[0, 2] = 0
+            annotation[0, 3] = 0
+            annotation[0, 4] = 0
+            annotations = np.append(annotations, annotation, axis=0)
+            target = np.array(annotations)
 
-        #     if self.augment:
-        #         img, _ = self.augment_function(img)
-        # else:
-        annotation[0, 0] = label[0]  # x1
-        annotation[0, 1] = label[1]  # y1
-        annotation[0, 2] = label[0] + label[2]  # x2
-        annotation[0, 3] = label[1] + label[3]  # y2
-        annotation[0, 4] = -1
-        if not is_valid_annotation(annotation, height, width):
-            # print(annotation)
-            return None, None
-        annotations = np.append(annotations, annotation, axis=0)
-        target = np.array(annotations)
-        # print(target)
-        if self.augment:
-            img, bboxes = self.augment_function(img, target)
-            bboxes = np.array(bboxes)
-            target[:, :4] = bboxes[:, :4]
-            # print(target.shape, target)
+            if self.augment:
+                img, _ = self.augment_function(img)
+        else:
+            annotation[0, 0] = label[0]  # x1
+            annotation[0, 1] = label[1]  # y1
+            annotation[0, 2] = label[0] + label[2]  # x2
+            annotation[0, 3] = label[1] + label[3]  # y2
+            annotation[0, 4] = -1
+            if not is_valid_annotation(annotation, height, width):
+                # print(annotation)
+                return None, None
+            annotations = np.append(annotations, annotation, axis=0)
+            target = np.array(annotations)
+            # print(target)
+            if self.augment:
+                img, bboxes = self.augment_function(img, target)
+                bboxes = np.array(bboxes)
+                target[:, :4] = bboxes[:, :4]
+                # print(target.shape, target)
 
         target[:, (0,2)] /= width
         target[:, (1,3)] /= height
         return img, torch.FloatTensor(target)
     
     def __load_data_in_one_dir(self, img_dir, label_dir):
-        num_batch = 100
+        # num_batch = 100
         label_extension = 'txt'
-        # for img_file in tqdm(os.listdir(img_dir)):
-        for img_file in tqdm(os.listdir(img_dir)[:num_batch]):
+        for img_file in tqdm(os.listdir(img_dir)):
+        # for img_file in tqdm(os.listdir(img_dir)[:num_batch]):
             img_name, img_extension = os.path.splitext(img_file)
             full_img_path = os.path.join(img_dir, img_file)
             if self.preload:

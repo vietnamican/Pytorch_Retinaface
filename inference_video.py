@@ -7,8 +7,9 @@ from PIL import Image
 from time import time
 from retinaface import RetinaFace as Detector
 import torch.nn.functional as F
+from tqdm import tqdm
 
-from data import cfg_mnet
+from data import cfg_mnet, cfg_re34
 from models_class import IrisModel
 from models import RetinaFace
 from layers.functions.prior_box import PriorBox
@@ -18,7 +19,9 @@ import albumentations as A
 import albumentations.pytorch as AP
 from models_heatmap.heatmapmodel import HeatMapLandmarker
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
+# os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
+cfg = cfg_re34
+device='cuda:1'
 
 torch.set_grad_enabled(False)
 
@@ -68,18 +71,18 @@ def remove_prefix(state_dict, prefix):
     f = lambda x: x.split(prefix, 1)[-1] if x.startswith(prefix) else x
     return {f(key): value for key, value in state_dict.items()}
 
-def load_model(model, pretrained_path, load_to_cpu):
+def load_model(model, pretrained_path, device):
     print('Loading pretrained model from {}'.format(pretrained_path))
-    if load_to_cpu:
+    if device ==  'cpu':
         print('Load to cpu')
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
     else:
-        device = torch.cuda.current_device()
-        pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
+        pretrained_dict = torch.load(pretrained_path, map_location=torch.device(device))
     # state_dict = pretrained_dict
     state_dict = pretrained_dict['state_dict']
     print(state_dict.keys())
     model.migrate(state_dict, force=True)
+    model = model.to(device)
     return model
 
 def segment_eye(image, lmks, eye='left', ow=96, oh=96, transform_mat=None):
@@ -123,38 +126,48 @@ def segment_eye(image, lmks, eye='left', ow=96, oh=96, transform_mat=None):
         return eye_image, transform_mat
 
 
-priorbox = PriorBox(cfg_mnet, image_size=(96, 96))
+priorbox = PriorBox(cfg, image_size=(96, 96))
 with torch.no_grad():
     priors = priorbox.forward()
-    priors = priors.to('cpu')
-    prior_data = priors.data.cpu()
+    priors = priors.to(device)
+    prior_data = priors.data
+variance = torch.Tensor(cfg['variance']).to(device)
 
 def calculate_box(loc, conf):
     scores = conf[:, 1]
     ind = scores.argmax()
-    boxes = decode(loc, prior_data, cfg['variance'])
+    boxes = decode(loc, prior_data, variance)
     scores = scores[ind:ind+1]
     boxes = boxes[ind:ind+1]
-    dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
+    dets = np.hstack((boxes.cpu().numpy(), scores.cpu().numpy()[:, np.newaxis])).astype(np.float32, copy=False)
     return dets
+
+# def detect_iris(img, net):
+#     img = transform(img).unsqueeze(0)
+#     # img = np.float32(img)
+#     # img -= (104, 117, 123)
+#     # img = img.transpose(2, 0, 1)
+#     # img = torch.from_numpy(img).unsqueeze(0)
+#     img = img.to(device)
+#     loc, conf = net(img)  # forward pass
+#     loc = loc.squeeze(0)
+#     conf = conf.squeeze(0)
+#     split_index = loc.shape[0] // 2
+#     print(conf.shape)
+#     loc_left, loc_right = loc[:split_index], loc[split_index:]
+#     conf_left, conf_right = conf[:split_index], conf[split_index:]
+#     print(loc_left.shape, loc_right.shape)
+#     print(conf_left.shape, conf_right.shape)
+#     return calculate_box(loc_left, conf_left), calculate_box(loc_right, conf_right)
 
 def detect_iris(img, net):
     img = transform(img).unsqueeze(0)
-    # img = np.float32(img)
-    # img -= (104, 117, 123)
-    # img = img.transpose(2, 0, 1)
-    # img = torch.from_numpy(img).unsqueeze(0)
     img = img.to(device)
     loc, conf = net(img)  # forward pass
-    loc = loc.squeeze(0).data.cpu()
-    conf = conf.squeeze(0).data.cpu().numpy()
-    split_index = loc.shape[0] // 2
-    print(conf.shape)
-    loc_left, loc_right = loc[:split_index], loc[split_index:]
-    conf_left, conf_right = conf[:split_index], conf[split_index:]
-    print(loc_left.shape, loc_right.shape)
-    print(conf_left.shape, conf_right.shape)
-    return calculate_box(loc_left, conf_left), calculate_box(loc_right, conf_right)
+    loc = loc.squeeze(0)
+    conf = conf.squeeze(0)
+    # print(conf.shape)
+    return calculate_box(loc, conf)
 
 def paint_bbox(image, bboxes):
     for b in bboxes:
@@ -168,14 +181,13 @@ def paint_bbox(image, bboxes):
 
 def paint_landmark(image, landmark):
     for (x, y) in landmark:
-        cv2.circle(image, (x, y), 1, (255, 255, 255), -1)
+        cv2.circle(image, (int(x), int(y)), 1, (255, 255, 255), -1)
 
 def filter_iris_box(dets, threshold):
     widths = dets[:, 2] - dets[:, 0]
     heights = dets[:, 3] - dets[:, 1]
     mask = (heights / widths) > threshold
-    dets = dets[mask]
-    return dets
+    return dets[mask]
 
 def filter_conf(dets, threshold):
     return dets[dets[:, 4] > threshold]
@@ -195,7 +207,7 @@ def predict_landmark(detector, img, model, device):
         img_tensor = transform(crop_face)
         img_tensor = torch.unsqueeze(img_tensor, 0)  # 1x3x256x256
 
-        heatmapPRED, lmks = model(img_tensor.to(device))
+        _, lmks = model(img_tensor.to(device))
 
         lmks = lmks.cpu().detach().numpy()[0] # 106x2
         lmks = lmks/256.0  # Scale into 0-1 coordination
@@ -212,48 +224,34 @@ def load_heatmap_model():
     landmark_model.eval()
     return landmark_model
 
-if __name__ == '__main__':
-    detector = Detector(quality="normal")
-    device = 'cpu'
-    landmark_model = load_heatmap_model()
-    cfg = cfg_mnet
-    # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=13-val_loss=4.6626.ckpt'
-    # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
-    # net_path = 'training_lapa_ir_logs/mobilenet0.25/checkpoints/checkpoint-epoch=249-val_loss=5.6218.ckpt'
-    # net_path = 'weight/weights_negpos/mobilenet0.25_Final.pth'
-    # net_path = 'weight/weights_without_prepoc/mobilenet0.25_Final.pth'
-    # net_path = 'logs/negpos_cleaned/checkpoints/checkpoint-epoch=249-val_loss=3.0892.ckpt'
-    # net_path = 'logs/version_0/checkpoints/checkpoint-epoch=249-val_loss=4.3475.ckpt'
-    # net_path = 'logs/fpn_logs/two_dataset/checkpoints/checkpoint-epoch=99-val_loss=4.4232.ckpt'
-    net_path = 'logs/fpn_logs/one_dataset/checkpoints/checkpoint-epoch=249-val_loss=4.0553.ckpt'
-    net = RetinaFace(cfg=cfg, phase = 'test')
-    print(net)
-    net = load_model(net, net_path, True)
-    net.eval()
-    cap = cv2.VideoCapture('../video/video7_sym_lowlight_nomask.avi')
+def detect_one_video(detector, landmark_model, net, cap_path, out_path):
+    cap = cv2.VideoCapture(cap_path)
+    length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('../video/video7_sym_lowlight_nomask_main_fpn_onedataset.avi', fourcc, 20.0, (1280, 720))
+    out = cv2.VideoWriter(out_path, fourcc, 30.0, (1280, 720))
 
-    # i = 0
-    conf_threshold = 0.80625
-    width_height_threshold = 0.4875
+    conf_threshold = 0.85
+    width_height_threshold = 0.6
+    print("Predicting {}...".format(cap_path))
 
-    while(cap.isOpened()):
+    for _ in tqdm(range(length)):
         ret, frame = cap.read()
-        print(frame.shape)
+        if not ret:
+            break
+        # print(frame.shape)
         start = time()
         landmarks = predict_landmark(detector, frame, landmark_model, device)
         if landmarks is not None:
             end = time()
-            print("Landmark time: {}".format(end-start))
+            # print("Landmark time: {}".format(end-start))
             left_eye, left_transform_mat = segment_eye(frame, landmarks, 'left')
             right_eye, right_transform_mat = segment_eye(frame, landmarks, 'right')
             paint_landmark(frame, landmarks)
             start = time()
-            eyes = np.concatenate([left_eye, right_eye], axis=0)
-            left_dets, right_dets = detect_iris(eyes, net)
+            left_dets = detect_iris(left_eye, net)
+            right_dets = detect_iris(right_eye, net)
             end = time()
-            print("Eye time: {}".format(end-start))
+            # print("Eye time: {}".format(end-start))
 
             left_dets[:, :4] *= 96
             left_dets = filter_iris_box(left_dets, width_height_threshold)
@@ -265,35 +263,38 @@ if __name__ == '__main__':
             right_dets = filter_conf(right_dets, conf_threshold)
             paint_bbox(right_eye, right_dets)
 
-            # start = time()
-            # dets = detect_iris(left_eye, net)
-            # end = time()
-            # print("Left eye time: {}".format(end-start))
-            # dets[:, :4] *= 96
-            # dets = filter_iris_box(dets, width_height_threshold)
-            # dets = filter_conf(dets, conf_threshold)
-            # paint_bbox(left_eye, dets)
-            # start = time()
-            # dets = detect_iris(right_eye, net)
-            # end = time()
-            # print("Right eye time: {}".format(end-start))
-            # dets[:, :4] *= 96
-            # dets = filter_iris_box(dets, width_height_threshold)
-            # dets = filter_conf(dets, conf_threshold)
-            # paint_bbox(right_eye, dets)
-
             eyes = np.concatenate([left_eye, right_eye], axis=1)
             h, w = eyes.shape[:2]
             frame[:h, :w] = eyes
-
-        # for point in landmark[0]:
-        #     frame = cv2.circle(frame, (point[0], point[1]), 2, (255,0,0), -1)
-        # print(landmark.shape)
         out.write(frame)
-        # cv2.imshow('frame', frame)
-        # if cv2.waitKey(1) & 0xFF == ord('q'):
-            # break
         
     cap.release()
     out.release()
-    # cv2.destroyAllWindows()
+
+def mkdir_if_not(path):
+    dirname = os.path.dirname(path)
+    if not os.path.isdir(dirname):
+        os.makedirs(dirname)
+
+if __name__ == '__main__':
+    detector = Detector(quality="normal")
+    landmark_model = load_heatmap_model()
+    net_path = 'logs/resnet34_logs/version_0/checkpoints/last.ckpt'
+    net = RetinaFace(cfg=cfg, phase = 'test')
+    print(net)
+    net = load_model(net, net_path, device)
+    net.eval()
+    dms_folder = '/vinai/tienpv12/datasets/20201201'
+    out_folder = '/vinai/tienpv12/out_1_range/20201201'
+
+    for folder in os.listdir(dms_folder):
+        if '.' in folder:
+            continue
+        rgb_video_path = os.path.join(dms_folder, folder, 'WH_RGB.mp4')
+        ir_video_path = os.path.join(dms_folder, folder, 'WH_IR.mp4')
+        rgb_out_video_path = rgb_video_path.replace(dms_folder, out_folder).replace('mp4', 'avi')
+        ir_out_video_path = ir_video_path.replace(dms_folder, out_folder).replace('mp4', 'avi')
+        mkdir_if_not(rgb_out_video_path)
+        mkdir_if_not(ir_out_video_path)
+        detect_one_video(detector, landmark_model, net, rgb_video_path, rgb_out_video_path)
+        detect_one_video(detector, landmark_model, net, ir_video_path, ir_out_video_path)
