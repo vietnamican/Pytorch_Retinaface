@@ -44,9 +44,10 @@ cfg_re50 = {
 
 cfg_re34 = {
     'name': 'Resnet34',
-    'min_sizes': [[16, 32], [48, 64], [80, 96]],
+    # 'min_sizes': [[16, 32], [48, 64], [80, 96]],
+    'min_sizes': [[16, 32]],
     'ratios': [1], # width/height
-    'steps': [8, 16, 32],
+    'steps': [8],
     'variance': [0.1, 0.2],
     'clip': False,
     'loc_weight': 2.0,

@@ -17,13 +17,13 @@ transformerr = {
         A.HorizontalFlip(p=0.5),  ## Becareful when using that, because the keypoint is flipped but the index is flipped too
         A.ColorJitter (brightness=0.35, contrast=0.5, saturation=0.5, hue=0.2, always_apply=False, p=0.7),
         A.ShiftScaleRotate (shift_limit=0.0625, scale_limit=0.25, rotate_limit=30, interpolation=1, border_mode=4, always_apply=False, p=1),
-        A.Normalize(),
+        A.Normalize(std=(1/255.0, 1/255.0, 1/255.0)),
         AP.ToTensorV2()
     ],
     bbox_params=A.BboxParams(format='pascal_voc')),
     'val': A.Compose(
     [
-        A.Normalize(),
+        A.Normalize(std=(1/255.0, 1/255.0, 1/255.0)),
         AP.ToTensorV2()
     ],
     bbox_params=A.BboxParams(format='pascal_voc'))
@@ -72,6 +72,7 @@ class LaPa(data.Dataset):
             img = self.imgs[index]
         else:
             img = cv2.imread(self.img_paths[index], self.imread_type)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
         height, width = img.shape[:2]
         label = self.labels[index]
@@ -119,7 +120,7 @@ class LaPa(data.Dataset):
             img_name, img_extension = os.path.splitext(img_file)
             full_img_path = os.path.join(img_dir, img_file)
             if self.preload:
-                self.imgs.append(cv2.imread(full_img_path, self.imread_type))
+                self.imgs.append(cv2.cvtColor(cv2.imread(full_img_path, self.imread_type), cv2.COLOR_BGR2RGB))
             self.img_paths.append(full_img_path)
             if 'negative' in full_img_path:
                 self.negpos.append(0)

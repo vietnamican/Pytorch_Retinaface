@@ -49,6 +49,7 @@ class RetinaFace(Base):
         self.phase = phase
         if cfg['name'] == 'mobilenet0.25':
             body = MobileNetV1()
+            in_channels_stage2 = cfg['in_channel']
             in_channels_list = [
                 in_channels_stage2 * 2,
                 in_channels_stage2 * 4,
@@ -67,14 +68,14 @@ class RetinaFace(Base):
         print(out_channels)
         self.fpn = FPN(in_channels_list, out_channels)
         self.ssh1 = SSH(out_channels, out_channels)
-        self.ssh2 = SSH(out_channels, out_channels)
-        self.ssh3 = SSH(out_channels, out_channels)
+        # self.ssh2 = SSH(out_channels, out_channels)
+        # self.ssh3 = SSH(out_channels, out_channels)
 
         anchor_num = [len(size) * len(cfg['ratios']) for size in cfg['min_sizes']]
         self.ClassHead = self._make_class_head(
-            fpn_num=3, inchannels=cfg['out_channel'], anchor_num=anchor_num)
+            fpn_num=len(cfg['steps']), inchannels=cfg['out_channel'], anchor_num=anchor_num)
         self.BboxHead = self._make_bbox_head(
-            fpn_num=3, inchannels=cfg['out_channel'], anchor_num=anchor_num)
+            fpn_num=len(cfg['steps']), inchannels=cfg['out_channel'], anchor_num=anchor_num)
 
     def _make_class_head(self, fpn_num=3, inchannels=64, anchor_num=2):
         classhead = nn.ModuleList()
@@ -101,12 +102,14 @@ class RetinaFace(Base):
 
         # SSH
         feature1 = self.ssh1(fpn[0])
-        feature2 = self.ssh2(fpn[1])
-        feature3 = self.ssh2(fpn[2])
-        features = [feature1, feature2, feature3]
+        # feature2 = self.ssh2(fpn[1])
+        # feature3 = self.ssh2(fpn[2])
+        # features = [feature1, feature2, feature3]
 
-        bbox_regressions = torch.cat([self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1)
-        classifications = torch.cat([self.ClassHead[i](feature) for i, feature in enumerate(features)], dim=1)
+        # bbox_regressions = torch.cat([self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1)
+        # classifications = torch.cat([self.ClassHead[i](feature) for i, feature in enumerate(features)], dim=1)
+        bbox_regressions = self.BboxHead(feature1)
+        classifications = self.ClassHead(feature1)
 
         if self.phase == 'train':
             output = (bbox_regressions, classifications)

@@ -11,11 +11,16 @@ from models import RetinaFace
 from layers.functions.prior_box import PriorBox
 from utils.nms.py_cpu_nms import py_cpu_nms
 from utils.box_utils import decode
-from data.config import cfg_mnet as cfg
+from data.config import cfg_mnet, cfg_re34
+
+torch.set_grad_enabled(False)
+
+cfg = cfg_re34
 
 transformerr = A.Compose(
     [
-        A.Normalize(),
+        A.Normalize(std=(1/255.0, 1/255.0, 1/255.0)),
+        # A.Normalize(),
         AP.ToTensorV2()
     ],
 )
@@ -43,18 +48,18 @@ def remove_prefix(state_dict, prefix):
     f = lambda x: x.split(prefix, 1)[-1] if x.startswith(prefix) else x
     return {f(key): value for key, value in state_dict.items()}
 
-def load_model(model, pretrained_path, load_to_cpu):
+def load_model(model, pretrained_path, device):
     print('Loading pretrained model from {}'.format(pretrained_path))
-    if load_to_cpu:
+    if device == 'cpu':
         print('Load to cpu')
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
     else:
-        device = torch.cuda.current_device()
-        pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
+        pretrained_dict = torch.load(pretrained_path, map_location=torch.device(device))
     state_dict = pretrained_dict['state_dict']
     # state_dict = model.filter_state_dict_with_prefix(state_dict, 'student_model.model', True)
     print(state_dict.keys())
     model.migrate(state_dict, force=True)
+    model = model.to(device)
     return model
 
 # def load_model(model, pretrained_path, device='cuda'):
@@ -73,11 +78,13 @@ def load_model(model, pretrained_path, load_to_cpu):
 #     model.load_state_dict(pretrained_dict, strict=False)
 #     return model
 
-device = 'cpu'
+device = 'cuda:1'
 priorbox = PriorBox(cfg, image_size=(96, 96))
-priors = priorbox.forward()
-priors = priors.to(device)
-prior_data = priors.data
+with torch.no_grad():
+    priors = priorbox.forward()
+    priors = priors.to(device)
+    prior_data = priors.data
+variance = torch.Tensor(cfg['variance']).to(device)
 
 def calculate_box(loc, conf):
     scores = conf[:, 1]
@@ -85,37 +92,28 @@ def calculate_box(loc, conf):
     boxes = decode(loc, prior_data, cfg['variance'])
     scores = scores[ind:ind+1]
     boxes = boxes[ind:ind+1]
-    dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
+    dets = np.hstack((boxes.cpu().numpy(), scores.cpu().numpy()[:, np.newaxis])).astype(np.float32, copy=False)
     return dets
 
-def detect_iris(img, net):
+def detect_two_iris(left_eye, right_eye, net):
+    img = np.concatenate([left_eye, right_eye], axis=0)
     img = transform(img).unsqueeze(0)
     img = img.to(device)
     loc, conf = net(img)  # forward pass
-    loc = loc.squeeze(0).data.cpu()
-    conf = conf.squeeze(0).data.cpu().numpy()
+    loc = loc.squeeze(0)
+    conf = conf.squeeze(0)
     split_index = loc.shape[0] // 2
     loc_left, loc_right = loc[:split_index], loc[split_index:]
     conf_left, conf_right = conf[:split_index], conf[split_index:]
     return calculate_box(loc_left, conf_left), calculate_box(loc_right, conf_right)
 
-# def detect_iris(img, net):
-#     img = transform(img).unsqueeze(0)
-#     img = img.to(device)
-
-#     loc, conf = net(img)  # forward pass
-
-#     scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
-#     ind = scores.argmax()
-
-#     boxes = decode(loc.data.squeeze(0), prior_data, cfg['variance'])
-#     boxes = boxes.cpu().numpy()
-#     scores = scores[ind:ind+1]
-#     boxes = boxes[ind:ind+1]
-
-#     dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
-
-#     return dets
+def detect_iris(img, net):
+    img = transform(img).unsqueeze(0)
+    img = img.to(device)
+    loc, conf = net(img)  # forward pass
+    loc = loc.squeeze(0)
+    conf = conf.squeeze(0)
+    return calculate_box(loc, conf)
 
 
 def filter_iris_box(dets, threshold):
@@ -140,12 +138,7 @@ def paint_bbox(image, bboxes):
                     cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
 if __name__ == '__main__':
-    # net_path = os.path.join('weights_negpos', 'mobilenet0.25_Final.pth')
-    # net_path = os.path.join('weights_negpos_cleaned', 'mobilenet0.25_Final.pth')
-    # net_path = 'distill_logs/version_0/checkpoints/checkpoint-epoch=52-val_loss=7.4488.ckpt'
-    # net_path = 'multi_ratio_prior_box_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=5.1367.ckpt'
-    # net_path = 'test_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=4.4232.ckpt'
-    net_path = 'logs/fpn_logs/version_0/checkpoints/checkpoint-epoch=99-val_loss=4.4232.ckpt'
+    net_path = 'logs/resnet34_logs/unnormalize/checkpoints/last.ckpt'  
     net = RetinaFace(cfg=cfg, phase = 'test')
     net = load_model(net, net_path, device)
     # net = net.cuda()
@@ -157,8 +150,10 @@ if __name__ == '__main__':
     open_close = 0
     close_open = 0
     close_close = 0
-    conf_threshold = 0.80625
-    width_height_threshold = 0.4875 
+    # conf_threshold = 0.80625
+    # width_height_threshold = 0.4875 
+    conf_threshold = 0.85
+    width_height_threshold = 0.6
 
     rgb_image_dir = os.path.join('../datasets', 'eyestate_label', 'outputrgb', 'Open')
     out_open_image_dir = os.path.join('../datasets', 'out', 'outputrgb', 'open_open')
@@ -172,8 +167,8 @@ if __name__ == '__main__':
     for image_file_one, image_file_two in tqdm(zip(listdir[::2], listdir[1::2])):
         image_one = cv2.imread(os.path.join(rgb_image_dir, image_file_one))
         image_two = cv2.imread(os.path.join(rgb_image_dir, image_file_two))
-        image = np.concatenate([image_one, image_two], axis=0)
-        one_dets, two_dets = detect_iris(image, net)
+        # image = np.concatenate([image_one, image_two], axis=0)
+        one_dets, two_dets = detect_two_iris(image_one, image_two, net)
         one_dets = filter_iris_box(one_dets, width_height_threshold)
         one_dets = filter_conf(one_dets, conf_threshold)
         two_dets = filter_iris_box(one_dets, width_height_threshold)
@@ -205,8 +200,8 @@ if __name__ == '__main__':
     for image_file_one, image_file_two in tqdm(zip(listdir[::2], listdir[1::2])):
         image_one = cv2.imread(os.path.join(rgb_image_dir, image_file_one))
         image_two = cv2.imread(os.path.join(rgb_image_dir, image_file_two))
-        image = np.concatenate([image_one, image_two], axis=0)
-        one_dets, two_dets = detect_iris(image, net)
+        # image = np.concatenate([image_one, image_two], axis=0)
+        one_dets, two_dets = detect_two_iris(image_one, image_two, net)
         one_dets = filter_iris_box(one_dets, width_height_threshold)
         one_dets = filter_conf(one_dets, conf_threshold)
         two_dets = filter_iris_box(one_dets, width_height_threshold)

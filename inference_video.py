@@ -27,13 +27,24 @@ torch.set_grad_enabled(False)
 
 transformerr = A.Compose(
     [
-        A.Normalize(),
+        A.Normalize(std=(1/255.0, 1/255.0, 1/255.0)),
+        # A.Normalize(),
         AP.ToTensorV2(),
     ],
 )
-
+landmark_transformer = A.Compose(
+    [
+        A.Normalize(),
+        AP.ToTensorV2(),
+    ]
+)
 def transform(img):
     out = transformerr(image=img)
+    return out['image']
+
+def landmark_transform(img):
+
+    out = landmark_transformer(image=img)
     return out['image']
 
 def square_box(box, ori_shape):
@@ -142,23 +153,17 @@ def calculate_box(loc, conf):
     dets = np.hstack((boxes.cpu().numpy(), scores.cpu().numpy()[:, np.newaxis])).astype(np.float32, copy=False)
     return dets
 
-# def detect_iris(img, net):
-#     img = transform(img).unsqueeze(0)
-#     # img = np.float32(img)
-#     # img -= (104, 117, 123)
-#     # img = img.transpose(2, 0, 1)
-#     # img = torch.from_numpy(img).unsqueeze(0)
-#     img = img.to(device)
-#     loc, conf = net(img)  # forward pass
-#     loc = loc.squeeze(0)
-#     conf = conf.squeeze(0)
-#     split_index = loc.shape[0] // 2
-#     print(conf.shape)
-#     loc_left, loc_right = loc[:split_index], loc[split_index:]
-#     conf_left, conf_right = conf[:split_index], conf[split_index:]
-#     print(loc_left.shape, loc_right.shape)
-#     print(conf_left.shape, conf_right.shape)
-#     return calculate_box(loc_left, conf_left), calculate_box(loc_right, conf_right)
+def detect_two_iris(left_eye, right_eye, net):
+    img = np.concatenate([left_eye, right_eye], axis=0)
+    img = transform(img).unsqueeze(0)
+    img = img.to(device)
+    loc, conf = net(img)  # forward pass
+    loc = loc.squeeze(0)
+    conf = conf.squeeze(0)
+    split_index = loc.shape[0] // 2
+    loc_left, loc_right = loc[:split_index], loc[split_index:]
+    conf_left, conf_right = conf[:split_index], conf[split_index:]
+    return calculate_box(loc_left, conf_left), calculate_box(loc_right, conf_right)
 
 def detect_iris(img, net):
     img = transform(img).unsqueeze(0)
@@ -204,7 +209,7 @@ def predict_landmark(detector, img, model, device):
         # Inference lmks
         crop_face = img[y1:y2, x1:x2]
         crop_face = cv2.resize(crop_face, (256, 256))
-        img_tensor = transform(crop_face)
+        img_tensor = landmark_transform(crop_face)
         img_tensor = torch.unsqueeze(img_tensor, 0)  # 1x3x256x256
 
         _, lmks = model(img_tensor.to(device))
@@ -248,8 +253,9 @@ def detect_one_video(detector, landmark_model, net, cap_path, out_path):
             right_eye, right_transform_mat = segment_eye(frame, landmarks, 'right')
             paint_landmark(frame, landmarks)
             start = time()
-            left_dets = detect_iris(left_eye, net)
-            right_dets = detect_iris(right_eye, net)
+            left_dets, right_dets = detect_two_iris(left_eye, right_eye, net)
+            # left_dets = detect_iris(left_eye, net)
+            # right_dets = detect_iris(right_eye, net)
             end = time()
             # print("Eye time: {}".format(end-start))
 
@@ -279,17 +285,22 @@ def mkdir_if_not(path):
 if __name__ == '__main__':
     detector = Detector(quality="normal")
     landmark_model = load_heatmap_model()
-    net_path = 'logs/resnet34_logs/version_0/checkpoints/last.ckpt'
+    net_path = 'logs/resnet34_logs/unnormalize/checkpoints/last.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     print(net)
     net = load_model(net, net_path, device)
     net.eval()
+    # video_path = '/home/ubuntu/VinAI/video/out_thanhbd12_side_sunlight_buonngu_deokhautrang.mp4'
+    # out_path = '/home/ubuntu/VinAI/video/out_thanhbd12_side_sunlight_buonngu_deokhautrang_resnet34_unnormalize.mp4'
+    # detect_one_video(detector, landmark_model, net, video_path, out_path)
     dms_folder = '/vinai/tienpv12/datasets/20201201'
-    out_folder = '/vinai/tienpv12/out_1_range/20201201'
-
-    for folder in os.listdir(dms_folder):
+    out_folder = '/vinai/tienpv12/unnomarlize/20201201'
+    list_folder = os.listdir(dms_folder)
+    length = len(list_folder)
+    for i, folder in enumerate(list_folder):
         if '.' in folder:
             continue
+        print('{}/{}'.format(i, length))
         rgb_video_path = os.path.join(dms_folder, folder, 'WH_RGB.mp4')
         ir_video_path = os.path.join(dms_folder, folder, 'WH_IR.mp4')
         rgb_out_video_path = rgb_video_path.replace(dms_folder, out_folder).replace('mp4', 'avi')
