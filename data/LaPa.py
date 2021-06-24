@@ -49,7 +49,7 @@ def is_valid_annotation(annotations, height, width):
     return True
 
 class LaPa(data.Dataset):
-    def __init__(self, img_dirs, label_dirs, set_type='train', augment=False, preload=False, to_gray=False):
+    def __init__(self, img_dirs, set_type='train', augment=False, preload=False, to_gray=False):
         self.augment = augment
         self.preload = preload
         self.to_gray = to_gray
@@ -60,7 +60,6 @@ class LaPa(data.Dataset):
         self.labels = []
         self.negpos = []
         self.img_dirs = img_dirs
-        self.label_dirs = label_dirs
         self.augment_function = partial(_augment, transformerr[set_type])
         # print(self.img_dirs)
         self.__parse_file()
@@ -112,13 +111,10 @@ class LaPa(data.Dataset):
         target[:, (1,3)] /= height
         return img, torch.FloatTensor(target)
     
-    def __load_data_in_one_dir(self, img_dir, label_dir):
+    def __load_data_in_one_dir(self, img_dir):
         label_extension = 'txt'
         img_paths = glob.glob(img_dir + '**/*.jpg', recursive=True)
         for full_img_path in tqdm(img_paths):
-            img_file = os.path.basename(full_img_path)
-            img_name, img_extension = os.path.splitext(img_file)
-            # full_img_path = os.path.join(img_dir, img_file)
             if self.preload:
                 self.imgs.append(cv2.imread(full_img_path, self.imread_type))
             self.img_paths.append(full_img_path)
@@ -136,10 +132,10 @@ class LaPa(data.Dataset):
 
     def __parse_file(self):
         if isinstance(self.img_dirs, str):
-            self.__load_data_in_one_dir(self.img_dirs, self.label_dirs)
+            self.__load_data_in_one_dir(self.img_dirs)
         else:
-            for img_dir, label_dir in zip(self.img_dirs, self.label_dirs):
-                self.__load_data_in_one_dir(img_dir, label_dir)
+            for img_dir in self.img_dirs:
+                self.__load_data_in_one_dir(img_dir)
 
 
 
