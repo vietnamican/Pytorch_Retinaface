@@ -9,6 +9,7 @@ import albumentations.pytorch as AP
 from tqdm import tqdm
 from functools import partial
 from torch.nn import functional as F
+import glob
 # Declare an augmentation pipeline
 # category_ids = [0]
 transformerr = {
@@ -113,9 +114,11 @@ class LaPa(data.Dataset):
     
     def __load_data_in_one_dir(self, img_dir, label_dir):
         label_extension = 'txt'
-        for img_file in tqdm(os.listdir(img_dir)):
+        img_paths = glob.glob(img_dir + '**/*.jpg', recursive=True)
+        for full_img_path in tqdm(img_paths):
+            img_file = os.path.basename(full_img_path)
             img_name, img_extension = os.path.splitext(img_file)
-            full_img_path = os.path.join(img_dir, img_file)
+            # full_img_path = os.path.join(img_dir, img_file)
             if self.preload:
                 self.imgs.append(cv2.imread(full_img_path, self.imread_type))
             self.img_paths.append(full_img_path)
@@ -123,7 +126,7 @@ class LaPa(data.Dataset):
                 self.negpos.append(0)
             else:
                 self.negpos.append(1)
-            label_file_path = os.path.join(label_dir, img_name + "." + label_extension)
+            label_file_path = full_img_path.replace('images', 'labels').replace('jpg', 'txt')
             with open(label_file_path, 'r') as f:
                 content = f.read().split('\n')[0:1]
                 label = np.loadtxt(content)
