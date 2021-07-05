@@ -19,13 +19,15 @@ import albumentations as A
 import albumentations.pytorch as AP
 from models_heatmap.heatmapmodel import HeatMapLandmarker
 
-# os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
+# setup devices
+os.environ['CUDA_VISIBLE_DEVICES'] = "-1"
 cfg = cfg_re34
-device='cuda:1'
+# device='cuda:1'
+device='cpu'
 
 torch.set_grad_enabled(False)
 
-transformerr = A.Compose(
+transformer = A.Compose(
     [
         A.Normalize(std=(1/255.0, 1/255.0, 1/255.0)),
         # A.Normalize(),
@@ -39,11 +41,10 @@ landmark_transformer = A.Compose(
     ]
 )
 def transform(img):
-    out = transformerr(image=img)
+    out = transformer(image=img)
     return out['image']
 
 def landmark_transform(img):
-
     out = landmark_transformer(image=img)
     return out['image']
 
@@ -74,7 +75,6 @@ def check_keys(model, pretrained_state_dict):
     print('Used keys:{}'.format(len(used_pretrained_keys)))
     assert len(used_pretrained_keys) > 0, 'load NONE from pretrained checkpoint'
     return True
-
 
 def remove_prefix(state_dict, prefix):
     ''' Old style model is stored with all names of parameters sharing common prefix 'module.' '''
@@ -174,13 +174,16 @@ def detect_iris(img, net):
     # print(conf.shape)
     return calculate_box(loc, conf)
 
-def paint_bbox(image, bboxes):
+def paint_bbox(image, bboxes, scores):
+    cx = 12
+    cy = 12
     for b in bboxes:
-        text = "{:.4f}".format(b[4])
         b = list(map(int, b))
         cv2.rectangle(image, (b[0], b[1]), (b[2], b[3]), (0, 0, 255), 2)
-        cx = b[0]
-        cy = b[1] - 12
+        # cx = b[0]
+        # cy = b[1] - 12
+    for score in scores:
+        text = "{:.4f}".format(score)
         cv2.putText(image, text, (cx, cy),
                     cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
@@ -236,7 +239,7 @@ def detect_one_video(detector, landmark_model, net, cap_path, out_path):
     out = cv2.VideoWriter(out_path, fourcc, 30.0, (1280, 720))
 
     conf_threshold = 0.85
-    width_height_threshold = 0.6
+    width_height_threshold = 0.4
     print("Predicting {}...".format(cap_path))
 
     for _ in tqdm(range(length)):
@@ -248,26 +251,22 @@ def detect_one_video(detector, landmark_model, net, cap_path, out_path):
         landmarks = predict_landmark(detector, frame, landmark_model, device)
         if landmarks is not None:
             end = time()
-            # print("Landmark time: {}".format(end-start))
             left_eye, left_transform_mat = segment_eye(frame, landmarks, 'left')
             right_eye, right_transform_mat = segment_eye(frame, landmarks, 'right')
             paint_landmark(frame, landmarks)
-            start = time()
             left_dets, right_dets = detect_two_iris(left_eye, right_eye, net)
-            # left_dets = detect_iris(left_eye, net)
-            # right_dets = detect_iris(right_eye, net)
-            end = time()
-            # print("Eye time: {}".format(end-start))
 
             left_dets[:, :4] *= 96
+            left_scores = left_dets[:, 4]
             left_dets = filter_iris_box(left_dets, width_height_threshold)
             left_dets = filter_conf(left_dets, conf_threshold)
-            paint_bbox(left_eye, left_dets)
+            paint_bbox(left_eye, left_dets, left_scores)
 
             right_dets[:, :4] *= 96
+            right_scores = right_dets[:, 4]
             right_dets = filter_iris_box(right_dets, width_height_threshold)
             right_dets = filter_conf(right_dets, conf_threshold)
-            paint_bbox(right_eye, right_dets)
+            paint_bbox(right_eye, right_dets, right_scores)
 
             eyes = np.concatenate([left_eye, right_eye], axis=1)
             h, w = eyes.shape[:2]
@@ -285,27 +284,12 @@ def mkdir_if_not(path):
 if __name__ == '__main__':
     detector = Detector(quality="normal")
     landmark_model = load_heatmap_model()
-    net_path = 'logs/resnet34_logs/unnormalize/checkpoints/last.ckpt'
+    net_path = 'logs/resnet34_logs/1_range_negpos/checkpoints/last.ckpt'
     net = RetinaFace(cfg=cfg, phase = 'test')
     print(net)
     net = load_model(net, net_path, device)
     net.eval()
-    # video_path = '/home/ubuntu/VinAI/video/out_thanhbd12_side_sunlight_buonngu_deokhautrang.mp4'
-    # out_path = '/home/ubuntu/VinAI/video/out_thanhbd12_side_sunlight_buonngu_deokhautrang_resnet34_unnormalize.mp4'
-    # detect_one_video(detector, landmark_model, net, video_path, out_path)
-    dms_folder = '/vinai/tienpv12/datasets/20201201'
-    out_folder = '/vinai/tienpv12/unnomarlize/20201201'
-    list_folder = os.listdir(dms_folder)
-    length = len(list_folder)
-    for i, folder in enumerate(list_folder):
-        if '.' in folder:
-            continue
-        print('{}/{}'.format(i, length))
-        rgb_video_path = os.path.join(dms_folder, folder, 'WH_RGB.mp4')
-        ir_video_path = os.path.join(dms_folder, folder, 'WH_IR.mp4')
-        rgb_out_video_path = rgb_video_path.replace(dms_folder, out_folder).replace('mp4', 'avi')
-        ir_out_video_path = ir_video_path.replace(dms_folder, out_folder).replace('mp4', 'avi')
-        mkdir_if_not(rgb_out_video_path)
-        mkdir_if_not(ir_out_video_path)
-        detect_one_video(detector, landmark_model, net, rgb_video_path, rgb_out_video_path)
-        detect_one_video(detector, landmark_model, net, ir_video_path, ir_out_video_path)
+    video_path = '/vinai/tienpv12/video/test_03072021.mp4'
+    out_path = '/vinai/tienpv12/video/test_03072021_enhanced_data_1rangenegpos.mp4'
+    detect_one_video(detector, landmark_model, net, video_path, out_path)
+    

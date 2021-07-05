@@ -62,14 +62,16 @@ def load_trainer(logdir, device, max_epochs, checkpoint=None):
     logger = TensorBoardLogger(
         save_dir=os.getcwd(),
         name=logdir,
+        # version=1
     )
     lr_monitor = LearningRateMonitor(log_momentum=False)
     loss_callback = ModelCheckpoint(
-        save_last=True
-        # monitor='val_loss',
-        # filename='checkpoint-{epoch:02d}',
-        # save_top_k=10,
-        # mode='min',
+        save_last=True,
+        
+        monitor='val_loss',
+        filename='checkpoint-{epoch:02d}-{val_loss:.4f}',
+        save_top_k=-1,
+        mode='min',
     )
     callbacks = [loss_callback, lr_monitor]
     resume_from_checkpoint = checkpoint
@@ -86,7 +88,7 @@ def load_trainer(logdir, device, max_epochs, checkpoint=None):
             max_epochs=max_epochs,
             logger=logger,
             callbacks=callbacks,
-            gpus=[1,],
+            gpus=1,
             accelerator=None,
             resume_from_checkpoint=resume_from_checkpoint
         )
@@ -100,74 +102,10 @@ def load_trainer(logdir, device, max_epochs, checkpoint=None):
 
     return trainer
 
-
-def load_data(args, val_only=False):
-    train_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/images'
-    train_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/train/labels'
-    val_image_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/images'
-    val_label_dir = '../datasets/LaPa_negpos_fusion_cleaned/val/labels'
-
-    train_ir_image_dirs = [
-        '../datasets/ir_negpos/positive/images/out2',
-        '../datasets/ir_negpos/positive/images/out22',
-        '../datasets/ir_negpos/positive/images/out222',
-        '../datasets/ir_negpos/negative/images/out2',
-        '../datasets/ir_negpos/negative/images/out22',
-        '../datasets/ir_negpos/negative/images/out222'
-    ]
-
-    train_ir_label_dirs = [
-        '../datasets/ir_negpos/positive/labels/out2',
-        '../datasets/ir_negpos/positive/labels/out22',
-        '../datasets/ir_negpos/positive/labels/out222',
-        '../datasets/ir_negpos/negative/labels/out2',
-        '../datasets/ir_negpos/negative/labels/out22',
-        '../datasets/ir_negpos/negative/labels/out222'
-    ]
-
-    val_ir_image_dirs = [
-        '../datasets/tatden/positive/images',
-        '../datasets/tatden/negative/images',
-    ]
-
-    val_ir_label_dirs = [
-        '../datasets/tatden/positive/labels',
-        '../datasets/tatden/negative/labels',
-    ]
-
-    train_batch_size = args.train_batch_size
-    val_batch_size = args.val_batch_size
-    num_workers = args.num_workers
-    
-    lapatraindataset = LaPa(train_image_dir, train_label_dir,
-                            'train', augment=True, preload=True, to_gray=False)
-    irtraindataset = LaPa(train_ir_image_dirs, train_ir_label_dirs,
-                          'train', augment=True, preload=True, to_gray=False)
-    traindataset = ConcatDataset(lapatraindataset, irtraindataset)
-    print(len(traindataset))
-    print(len(irtraindataset))
-    print(len(lapatraindataset))
-    trainloader = DataLoader(traindataset, batch_size=train_batch_size,
-                             pin_memory=True, num_workers=num_workers, shuffle=True, collate_fn=detection_collate)
-    lapavaldataset = LaPa(val_image_dir, val_label_dir, 'val',
-                          augment=True, preload=True, to_gray=False)
-    irvaldataset = LaPa(val_ir_image_dirs, val_ir_label_dirs, 'val', augment=True, preload=True, to_gray=False)
-    valdataset = ConcatDataset(lapavaldataset, irvaldataset)
-    print(len(valdataset))
-    print(len(irvaldataset))
-    print(len(lapavaldataset))
-    valloader = DataLoader(valdataset, batch_size=val_batch_size,
-                           pin_memory=True, num_workers=num_workers, collate_fn=detection_collate)
-    if not val_only:
-        return traindataset, trainloader, valdataset, valloader
-    return valdataset, valloader
-
-
 if __name__ == '__main__':
-    _, trainloader, _, valloader = load_data(args)
-    num_training_steps = len(trainloader)
-    net = Model(cfg=cfg, args=args, num_training_steps=num_training_steps)
+    net = Model(cfg=cfg, args=args)
     print("Printing net...")
     print(net)
-    trainer = load_trainer(args.save_folder, 'gpu', cfg['max_epochs'])
-    trainer.fit(net, trainloader, valloader)
+    # trainer = load_trainer(args.save_folder, 'gpu', cfg['max_epochs'], checkpoint='logs/resnet34_logs/version_1/checkpoints/last.ckpt')
+    trainer = load_trainer(args.save_folder, 'gpu', cfg['max_epochs'], checkpoint=None)
+    trainer.fit(net)
